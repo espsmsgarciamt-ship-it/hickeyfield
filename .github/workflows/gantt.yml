@@ -1,0 +1,26 @@
+name: Gantt planner
+
+on:
+  push:
+    branches: [main]
+    paths: ["gantt/**", ".github/workflows/gantt.yml"]
+  pull_request:
+    paths: ["gantt/**", ".github/workflows/gantt.yml"]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gantt
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gantt/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

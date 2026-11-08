@@ -38,3 +38,6 @@ node_modules
 .DS_Store
 Thumbs.db
 .gstack/
+
+# Gantt planner
+/gantt/dist
