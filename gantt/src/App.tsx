@@ -42,6 +42,12 @@ export default function App() {
   const [compact, setCompact] = useState(NARROW);
   const [menuOpen, setMenuOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
+  const [viewLeft, setViewLeft] = useState(0);
+  const scrollFrame = useRef(0);
+  const onScroll = () => {
+    cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => setViewLeft(scroller.current?.scrollLeft ?? 0));
+  };
 
   const schedule = useMemo(() => computeSchedule(project), [project]);
   const today = parseDate(todayISO());
@@ -397,12 +403,12 @@ export default function App() {
         </div>
       </div>
 
-      <div className="workspace" ref={scroller}>
+      <div className="workspace" ref={scroller} onScroll={onScroll}>
         {tab === "gantt" ? (
           <div className="sheet" style={{ width: gridWidth(compact) + axis.width }}>
             <div className="head-row">
               <GridHeader compact={compact} />
-              <TimelineHeader axis={axis} zoom={zoom} />
+              <TimelineHeader axis={axis} zoom={zoom} viewLeft={viewLeft} />
             </div>
             <div className="body-row">
               <TaskGrid
@@ -468,6 +474,7 @@ export default function App() {
             axis={axis}
             zoom={zoom}
             today={today}
+            viewLeft={viewLeft}
             onAdd={() => commit(ops.addResource(project)[0])}
             onRename={(id, name) => apply((p) => ops.updateResource(p, id, { name }))}
             onRole={(id, role) => apply((p) => ops.updateResource(p, id, { role }))}

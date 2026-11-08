@@ -12,6 +12,7 @@ export function ResourceView({
   axis,
   zoom,
   today,
+  viewLeft,
   onAdd,
   onRename,
   onRole,
@@ -22,6 +23,7 @@ export function ResourceView({
   axis: Axis;
   zoom: Zoom;
   today: number;
+  viewLeft: number;
   onAdd: () => void;
   onRename: (id: string, name: string) => void;
   onRole: (id: string, role: string) => void;
@@ -49,7 +51,7 @@ export function ResourceView({
           <div className="cell num" style={{ width: 70 }}>Tasks</div>
           <div className="cell" style={{ width: 40 }} />
         </div>
-        <TimelineHeader axis={axis} zoom={zoom} />
+        <TimelineHeader axis={axis} zoom={zoom} viewLeft={viewLeft} />
       </div>
       <div className="body-row">
         <div className="grid-body" style={{ width: RES_GRID_WIDTH }}>

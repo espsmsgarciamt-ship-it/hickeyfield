@@ -77,15 +77,23 @@ export function headerRows(axis: Axis, zoom: Zoom): [Cell[], Cell[]] {
   return [top, bottom];
 }
 
-export function TimelineHeader({ axis, zoom }: { axis: Axis; zoom: Zoom }) {
+/**
+ * `viewLeft` is the first visible x of the chart. Month and year labels stick
+ * to it, so the current month stays named however far into it you scroll.
+ */
+export function TimelineHeader({ axis, zoom, viewLeft = 0 }: { axis: Axis; zoom: Zoom; viewLeft?: number }) {
   const [top, bottom] = headerRows(axis, zoom);
+  const labelX = (c: Cell) => {
+    const textW = c.label.length * 7.5 + 12;
+    return Math.max(c.x + 6, Math.min(viewLeft + 6, c.x + c.w - textW));
+  };
   const half = HEAD_H / 2;
   return (
     <svg className="timeline-head" width={axis.width} height={HEAD_H}>
       {top.map((c, i) => (
         <g key={`t${i}`}>
           <line x1={c.x} x2={c.x} y1={0} y2={half} className="tick" />
-          <text x={c.x + 6} y={16} className="head-label">
+          <text x={labelX(c)} y={16} className="head-label">
             {c.w > 40 ? c.label : ""}
           </text>
         </g>
