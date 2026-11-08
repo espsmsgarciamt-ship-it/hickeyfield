@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PERT CPM Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a working tool in one column. Inputs (activity sheet + settings) on top, results below in reading order: summary, Gantt, S-curves, schedule table. */
+:root{
+  --bg:#fbfbfa; --panel:#f1f2f3; --field:#ffffff; --fg:#111213; --fg2:#4f5155; --muted:#77797d;
+  --rule:#dfe0e2; --grid:#ebebec; --s1:#2a78d6; --s2:#eb6834; --err:#c4302b; --errbg:#fdeceb; --focus:#2a78d6;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#18191a; --panel:#212224; --field:#111213; --fg:#eff0f1; --fg2:#c2c4c7; --muted:#8d9094;
+  --rule:#333538; --grid:#2a2c2e; --s1:#3987e5; --s2:#d95926; --err:#f07a74; --errbg:#3a1f1e; --focus:#5598e7; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#18191a; --panel:#212224; --field:#111213; --fg:#eff0f1; --fg2:#c2c4c7; --muted:#8d9094;
+  --rule:#333538; --grid:#2a2c2e; --s1:#3987e5; --s2:#d95926; --err:#f07a74; --errbg:#3a1f1e; --focus:#5598e7; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+main{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:36px}
+h1,h2{font-family:var(--display);font-weight:600;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2rem} h2{font-size:1.3rem}
+p{margin:0;max-width:68ch;color:var(--fg2)}
+code{font:.86em var(--mono)}
+.eyebrow{font:500 .7rem/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+header,section{display:flex;flex-direction:column;gap:14px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:500 .85rem/1 var(--body);color:var(--fg);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:9px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--s1);border-color:var(--s1);color:#fff}
+button.ghost{background:none;border-color:transparent;color:var(--muted);padding:6px 8px}
+button.ghost:hover{color:var(--err)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+input,select,textarea{font:13.5px/1.3 var(--mono);color:var(--fg);background:var(--field);border:1px solid var(--rule);border-radius:5px;padding:7px 8px;min-width:0}
+textarea{width:100%;min-height:140px;resize:vertical}
+.sheet-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.sheet th{font:500 .72rem/1.2 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 6px 6px;white-space:nowrap}
+.sheet td{padding:3px 4px;border-top:1px solid var(--rule)}
+.sheet td:first-child{padding-left:10px}
+.sheet input{width:100%}
+.sheet .c-id{width:64px}.sheet .c-num{width:74px}.sheet .c-pred{width:110px}.sheet .c-cost{width:92px}.sheet .c-desc{min-width:180px}
+.sheet tr.bad td{background:var(--errbg)}
+.sheet .c-x{width:36px;text-align:center}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 18px;padding:14px;background:var(--panel);border-radius:8px}
+.settings label{display:flex;flex-direction:column;gap:5px;font-size:.8rem;color:var(--fg2)}
+.settings .chk{flex-direction:row;align-items:center;gap:8px;padding-top:18px}
+.errors{border-left:3px solid var(--err);background:var(--errbg);padding:10px 14px;border-radius:0 6px 6px 0;font-size:.88rem;color:var(--fg)}
+.errors ul{margin:6px 0 0;padding-left:18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 24px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font:500 1.35rem/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--fg)}
+.stat span{font-size:.78rem;color:var(--muted)}
+.stat.warn b{color:var(--s2)}
+.cp{font:500 .95rem/1.5 var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.legend{display:flex;flex-wrap:wrap;gap:6px 20px;font-size:.84rem;color:var(--fg2)}
+.legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px;border-radius:1px}
+.legend i.box{height:10px;width:14px;border-radius:2px}
+.chart{position:relative;width:100%;min-width:0}
+.chart svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.gantt-wrap{overflow-x:auto}
+.tip{position:absolute;pointer-events:none;background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;
+  font:12px/1.5 var(--mono);font-variant-numeric:tabular-nums;color:var(--fg);box-shadow:0 4px 16px rgb(0 0 0 / .14);white-space:nowrap;transform:translate(-50%,-100%);z-index:2}
+.tip .k{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:32px}
+.out-wrap{overflow-x:auto}
+.out th,.out td{font:12.5px/1.4 var(--mono);padding:6px 12px 6px 0;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+.out th{color:var(--muted);font-weight:500}
+.out td:nth-child(2),.out th:nth-child(2){text-align:left;white-space:normal;min-width:140px}
+.out td:first-child,.out th:first-child{text-align:left}
+.pill{display:inline-block;font:500 .7rem/1 var(--mono);padding:3px 6px;border-radius:999px;border:1px solid var(--s2);color:var(--fg)}
+.bar{display:inline-block;height:6px;border-radius:3px;background:var(--s1);vertical-align:middle;margin-right:6px}
+details{font-size:.88rem}
+summary{cursor:pointer;color:var(--fg2)}
+.note{font-size:.86rem;color:var(--fg2)}
+.toast{font-size:.82rem;color:var(--muted);min-height:1.2em}
+footer p{font-size:.8rem;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">Three-point estimates · critical path · Monte Carlo · S-curves</div>
+  <h1>PERT / CPM planner</h1>
+  <p>Enter each activity with an optimistic, most likely and pessimistic duration and the activities it waits for. The planner finds the critical path, the float on every activity, the chance of meeting your deadline, and both S-curves. It loads with a sample release project; replace it with your own. Everything runs in your browser and is saved on this device only.</p>
+</header>
+
+<section aria-labelledby="h-act">
+  <div class="eyebrow">Inputs</div>
+  <h2 id="h-act">Activities</h2>
+  <div class="sheet-wrap">
+    <table class="sheet" aria-describedby="sheet-help">
+      <thead><tr>
+        <th>ID</th><th>Description</th><th title="Optimistic duration">Optimistic</th><th title="Most likely duration">Most likely</th><th title="Pessimistic duration">Pessimistic</th><th>Waits for</th><th title="Optional budget, used for a cost-weighted progress curve">Cost</th><th><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Remove</span></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p id="sheet-help" class="note">"Waits for" takes activity IDs separated by commas, for example <code>B, C</code>. Leave it empty for activities that can start on day 0. Cost is optional.</p>
+  <div class="row">
+    <button id="add" class="primary" type="button">Add activity</button>
+    <button id="example" type="button">Load sample project</button>
+    <button id="clear" type="button">Clear all</button>
+    <span class="toast" id="toast" role="status"></span>
+  </div>
+  <div class="row" id="clear-confirm" hidden>
+    <span class="note">Remove every activity?</span>
+    <button id="clear-yes" type="button">Yes, clear</button>
+    <button id="clear-no" type="button">Cancel</button>
+  </div>
+  <details>
+    <summary>Import or copy as CSV</summary>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <p class="note">Columns: <code>id, description, optimistic, most_likely, pessimistic, waits_for, cost</code>. Separate IDs in <code>waits_for</code> with semicolons. A header row is optional. You can paste straight from a spreadsheet.</p>
+      <textarea id="csv" aria-label="CSV data" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="import" type="button">Replace activities with this CSV</button>
+        <button id="copy" type="button">Copy activities as CSV</button>
+      </div>
+    </div>
+  </details>
+
+  <div class="settings">
+    <label for="unit">Time unit<select id="unit"><option>days</option><option>weeks</option><option>hours</option><option>months</option></select></label>
+    <label for="deadline">Deadline<input id="deadline" type="number" min="0" step="0.5" value="20"></label>
+    <label for="runs">Simulation runs<select id="runs"><option value="2000">2,000 (fast)</option><option value="10000">10,000</option><option value="20000" selected>20,000</option><option value="50000">50,000</option><option value="100000">100,000 (slow)</option></select></label>
+    <label for="weight">Progress curve weight<select id="weight"><option value="dur">Expected duration</option><option value="cost">Cost</option></select></label>
+    <label class="chk" for="fixed"><input id="fixed" type="checkbox" checked> Repeatable results (fixed seed)</label>
+  </div>
+</section>
+
+<div class="errors" id="errors" hidden></div>
+
+<section id="results" aria-labelledby="h-sum">
+  <div class="eyebrow">Results</div>
+  <h2 id="h-sum">Summary</h2>
+  <div class="stats" id="stats"></div>
+  <div><span class="note">Critical path</span><div class="cp" id="cp"></div></div>
+</section>
+
+<section aria-labelledby="h-gantt" id="sec-gantt">
+  <h2 id="h-gantt">Schedule (early start)</h2>
+  <div class="legend"><span><i class="box" style="background:var(--s2)"></i>Critical activity</span><span><i class="box" style="background:var(--s1)"></i>Activity with float</span><span><i style="background:var(--muted)"></i>Float (can slip this far)</span><span><i style="background:none;border-top:2px dashed var(--fg2);height:0"></i>Deadline</span></div>
+  <div class="gantt-wrap"><div class="chart" id="gantt"></div></div>
+</section>
+
+<div class="two">
+<section aria-labelledby="h-prog">
+  <h2 id="h-prog">Planned progress S-curve</h2>
+  <p class="note">Cumulative share of planned work. Progress below the late-start curve means the finish date is slipping.</p>
+  <div class="legend"><span><i style="background:var(--s1)"></i>Early start</span><span><i style="background:var(--s2)"></i>Late start</span></div>
+  <div class="chart" id="c1"></div>
+</section>
+<section aria-labelledby="h-prob">
+  <h2 id="h-prob">Completion probability S-curve</h2>
+  <p class="note">Chance of finishing by each date. Monte Carlo includes merge bias; classical PERT does not.</p>
+  <div class="legend"><span><i style="background:var(--s1)"></i>Monte Carlo</span><span><i style="background:var(--s2)"></i>Classical PERT</span></div>
+  <div class="chart" id="c2"></div>
+</section>
+</div>
+
+<section aria-labelledby="h-tab">
+  <h2 id="h-tab">Schedule table</h2>
+  <p class="note">t<sub>e</sub> = (o + 4m + p) / 6. ES/EF = earliest start/finish, LS/LF = latest start/finish, TF = total float, FF = free float. Criticality = share of simulation runs in which the activity was on the critical path.</p>
+  <div class="out-wrap"><table class="out" id="out"></table></div>
+</section>
+
+<section aria-labelledby="h-curve-data">
+  <details>
+    <summary id="h-curve-data">S-curve data as CSV</summary>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <textarea id="curve-csv" readonly aria-label="S-curve data" spellcheck="false"></textarea>
+      <div class="row"><button id="copy-curve" type="button">Copy S-curve data</button></div>
+    </div>
+  </details>
+</section>
+
+<footer><p>Method: CPM forward and backward pass with finish-to-start links; PERT mean and variance per activity; Monte Carlo samples each activity from a PERT-Beta distribution and recomputes the longest path every run. Classical PERT uses the critical path only (when paths tie, the one with the largest variance). Same method as <code>scripts/pert_cpm.py</code> in the Hickeyfield repo.</p></footer>
+</main>
+
+<script>
+(function(){
+"use strict";
+const SAMPLE=[
+  ["A","Scope & design",2,3,6,"",4000],
+  ["B","Core engine work",4,6,14,"A",15000],
+  ["C","UI build",3,5,13,"A",11000],
+  ["D","Provider integration",2,4,8,"B",8000],
+  ["E","UI polish & a11y",3,4,9,"C",6000],
+  ["F","Integration testing",2,3,5,"D, E",5000],
+  ["G","Docs & installer",1,2,4,"A",2500],
+  ["H","Release",1,1,2,"F, G",1500]
+].map(r=>({id:r[0],desc:r[1],o:r[2],m:r[3],p:r[4],preds:r[5],cost:r[6]}));
+const KEY="pert-cpm-planner-v1";
+let rows=[], settings={unit:"days",deadline:20,runs:20000,weight:"dur",fixed:true};
+const $=id=>document.getElementById(id);
+
+function load(){
+  try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&Array.isArray(s.rows)){rows=s.rows;Object.assign(settings,s.settings||{});return}}catch(e){}
+  rows=SAMPLE.map(r=>({...r}));
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({rows,settings}))}catch(e){}}
+
+/* ---------- activity sheet ---------- */
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function renderRows(){
+  $("rows").innerHTML=rows.map((r,i)=>`<tr data-i="${i}">
+    <td class="c-id"><input id="r${i}-id" data-f="id" value="${esc(r.id)}" aria-label="ID, row ${i+1}"></td>
+    <td class="c-desc"><input id="r${i}-desc" data-f="desc" value="${esc(r.desc)}" aria-label="Description, row ${i+1}"></td>
+    <td class="c-num"><input id="r${i}-o" data-f="o" type="number" min="0" step="any" value="${esc(r.o)}" aria-label="Optimistic, row ${i+1}"></td>
+    <td class="c-num"><input id="r${i}-m" data-f="m" type="number" min="0" step="any" value="${esc(r.m)}" aria-label="Most likely, row ${i+1}"></td>
+    <td class="c-num"><input id="r${i}-p" data-f="p" type="number" min="0" step="any" value="${esc(r.p)}" aria-label="Pessimistic, row ${i+1}"></td>
+    <td class="c-pred"><input id="r${i}-preds" data-f="preds" value="${esc(r.preds)}" aria-label="Waits for, row ${i+1}" placeholder="—"></td>
+    <td class="c-cost"><input id="r${i}-cost" data-f="cost" type="number" min="0" step="any" value="${esc(r.cost)}" aria-label="Cost, row ${i+1}"></td>
+    <td class="c-x"><button class="ghost" type="button" data-del="${i}" aria-label="Remove row ${i+1}" title="Remove">✕</button></td></tr>`).join("");
+}
+$("rows").addEventListener("input",e=>{
+  const t=e.target,tr=t.closest("tr");if(!tr||!t.dataset.f)return;
+  rows[+tr.dataset.i][t.dataset.f]=t.value;schedule();
+});
+$("rows").addEventListener("click",e=>{
+  const b=e.target.closest("[data-del]");if(!b)return;rows.splice(+b.dataset.del,1);renderRows();schedule(true);
+});
+function nextId(){
+  const used=new Set(rows.map(r=>String(r.id).trim()));
+  for(let n=0;;n++){let s="",k=n;do{s=String.fromCharCode(65+k%26)+s;k=Math.floor(k/26)-1}while(k>=0);if(!used.has(s))return s}
+}
+$("add").onclick=()=>{
+  const last=rows[rows.length-1];
+  rows.push({id:nextId(),desc:"",o:1,m:2,p:4,preds:last?String(last.id).trim():"",cost:""});
+  renderRows();schedule(true);const i=rows.length-1;const el=$(`r${i}-desc`);if(el)el.focus();
+};
+$("example").onclick=()=>{rows=SAMPLE.map(r=>({...r}));settings.deadline=20;$("deadline").value=20;renderRows();schedule(true);toast("Sample project loaded.")};
+$("clear").onclick=()=>{$("clear-confirm").hidden=false};
+$("clear-no").onclick=()=>{$("clear-confirm").hidden=true};
+$("clear-yes").onclick=()=>{rows=[];$("clear-confirm").hidden=true;renderRows();schedule(true);toast("All activities removed.")};
+let toastT;function toast(m){$("toast").textContent=m;clearTimeout(toastT);toastT=setTimeout(()=>$("toast").textContent="",3500)}
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  const out=[];const lines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+  for(const line of lines){
+    const sep=line.includes("\t")?"\t":",";const cells=[];let cur="",q=false;
+    for(let i=0;i<line.length;i++){const c=line[i];
+      if(q){if(c=='"'&&line[i+1]=='"'){cur+='"';i++}else if(c=='"')q=false;else cur+=c}
+      else if(c=='"')q=true;else if(c==sep){cells.push(cur);cur=""}else cur+=c}
+    cells.push(cur);out.push(cells.map(s=>s.trim()));
+  }
+  if(out.length&&isNaN(parseFloat(out[0][2])))out.shift();
+  return out.map(c=>({id:c[0]||"",desc:c[1]||"",o:c[2]||"",m:c[3]||"",p:c[4]||"",preds:(c[5]||"").replace(/;/g,", "),cost:c[6]||""}));
+}
+function toCSV(){
+  const q=s=>{s=String(s??"");return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s};
+  return ["id,description,optimistic,most_likely,pessimistic,waits_for,cost"].concat(rows.map(r=>[r.id,r.desc,r.o,r.m,r.p,splitIds(r.preds).join(";"),r.cost].map(q).join(","))).join("\n");
+}
+$("import").onclick=()=>{const r=parseCSV($("csv").value);if(!r.length){toast("No rows found in the CSV.");return}rows=r;renderRows();schedule(true);toast(`Imported ${r.length} activities.`)};
+function copyText(text,ta,msg){
+  const done=()=>toast(msg);
+  try{navigator.clipboard.writeText(text).then(done,()=>{ta.value=text;ta.select();toast("Selected. Press Ctrl+C or ⌘C to copy.")})}
+  catch(e){ta.value=text;ta.select();toast("Selected. Press Ctrl+C or ⌘C to copy.")}
+}
+$("copy").onclick=()=>{const t=toCSV();$("csv").value=t;copyText(t,$("csv"),"Activities copied as CSV.")};
+$("copy-curve").onclick=()=>copyText($("curve-csv").value,$("curve-csv"),"S-curve data copied.");
+
+/* ---------- settings ---------- */
+function syncSettingsUI(){$("unit").value=settings.unit;$("deadline").value=settings.deadline;$("runs").value=String(settings.runs);$("weight").value=settings.weight;$("fixed").checked=settings.fixed}
+["unit","deadline","runs","weight","fixed"].forEach(k=>$(k).addEventListener(k==="deadline"?"input":"change",()=>{
+  settings.unit=$("unit").value;settings.deadline=parseFloat($("deadline").value);settings.runs=+$("runs").value;settings.weight=$("weight").value;settings.fixed=$("fixed").checked;schedule();
+}));
+
+/* ---------- maths ---------- */
+const splitIds=s=>String(s??"").split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);
+function validate(){
+  const errs=[],bad=new Set(),acts=[];const ids=new Map();
+  rows.forEach((r,i)=>{
+    const id=String(r.id??"").trim(),n=i+1;const o=parseFloat(r.o),m=parseFloat(r.m),p=parseFloat(r.p);
+    if(!id){errs.push(`Row ${n}: give the activity an ID.`);bad.add(i);return}
+    if(ids.has(id)){errs.push(`Row ${n}: ID "${id}" is already used on row ${ids.get(id)+1}. Each ID must be unique.`);bad.add(i)}
+    ids.set(id,i);
+    if(![o,m,p].every(Number.isFinite)){errs.push(`${id}: fill in all three durations.`);bad.add(i)}
+    else if(o<0){errs.push(`${id}: durations can't be negative.`);bad.add(i)}
+    else if(!(o<=m&&m<=p)){errs.push(`${id}: durations must satisfy optimistic ≤ most likely ≤ pessimistic (got ${o}, ${m}, ${p}).`);bad.add(i)}
+    const c=r.cost===""||r.cost==null?0:parseFloat(r.cost);
+    if(!Number.isFinite(c)||c<0){errs.push(`${id}: cost must be a positive number or empty.`);bad.add(i)}
+    acts.push({i,id,desc:r.desc||"",o,m,p,cost:Number.isFinite(c)?c:0,preds:splitIds(r.preds)});
+  });
+  for(const a of acts)for(const p of a.preds){
+    if(p===a.id){errs.push(`${a.id}: an activity can't wait for itself.`);bad.add(a.i)}
+    else if(!ids.has(p)){errs.push(`${a.id}: waits for "${p}", but no activity has that ID.`);bad.add(a.i)}
+  }
+  let order=null;
+  if(!errs.length&&acts.length){
+    const idx=new Map(acts.map((a,k)=>[a.id,k]));const indeg=acts.map(a=>a.preds.length);const succ=acts.map(()=>[]);
+    acts.forEach((a,k)=>a.preds.forEach(p=>succ[idx.get(p)].push(k)));
+    const q=acts.map((a,k)=>k).filter(k=>!indeg[k]);order=[];
+    while(q.length){const k=q.shift();order.push(k);for(const s of succ[k])if(!--indeg[s])q.push(s)}
+    if(order.length!==acts.length){const loop=acts.filter((a,k)=>indeg[k]>0);errs.push(`These activities wait for each other in a loop: ${loop.map(a=>a.id).join(", ")}. Remove one of the links.`);loop.forEach(a=>bad.add(a.i));order=null}
+    else{acts.forEach((a,k)=>{a.pi=a.preds.map(p=>idx.get(p));a.si=succ[k]})}
+  }
+  return {errs,bad,acts,order};
+}
+function cpm(acts,order,dur){
+  const n=acts.length,es=new Float64Array(n),ef=new Float64Array(n),ls=new Float64Array(n),lf=new Float64Array(n);
+  let T=0;
+  for(const k of order){let s=0;for(const p of acts[k].pi)if(ef[p]>s)s=ef[p];es[k]=s;ef[k]=s+dur[k];if(ef[k]>T)T=ef[k]}
+  for(let j=n-1;j>=0;j--){const k=order[j];let f=T;for(const s of acts[k].si)if(ls[s]<f)f=ls[s];lf[k]=f;ls[k]=f-dur[k]}
+  return {es,ef,ls,lf,T};
+}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function normal(r){let u=0;while(!u)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())}
+function gamma(r,k){const d=k-1/3,c=1/Math.sqrt(9*d);for(;;){let x,v;do{x=normal(r);v=1+c*x}while(v<=0);v=v*v*v;const u=r();if(u<1-0.0331*x*x*x*x||Math.log(u)<0.5*x*x+d*(1-v+Math.log(v)))return d*v}}
+function betaPert(r,o,m,p){if(p<=o)return o;const a=1+4*(m-o)/(p-o),b=1+4*(p-m)/(p-o);const x=gamma(r,a),y=gamma(r,b);return o+x/(x+y)*(p-o)}
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+0.3275911*x);const y=1-((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return s*y}
+const phi=z=>0.5*(1+erf(z/Math.SQRT2));
+const EPS=1e-9;
+
+/* ---------- compute + render ---------- */
+let timer=null;
+function schedule(now){save();clearTimeout(timer);timer=setTimeout(compute,now?0:300)}
+const fmt=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):"–";
+function compute(){
+  const {errs,bad,acts,order}=validate();
+  document.querySelectorAll("#rows tr").forEach(tr=>tr.classList.toggle("bad",bad.has(+tr.dataset.i)));
+  const resEls=["results","sec-gantt","out"].map($);
+  const hideResults=h=>{document.querySelectorAll("#results, #sec-gantt, .two, #h-tab, #out, #h-curve-data").forEach(e=>{const s=e.closest("section")||e;s.hidden=h})};
+  if(!acts.length){$("errors").hidden=false;$("errors").innerHTML="Add at least one activity to see results.";hideResults(true);return}
+  if(errs.length){$("errors").hidden=false;$("errors").innerHTML=`<b>Fix these to see results:</b><ul>${errs.map(e=>`<li>${esc(e)}</li>`).join("")}</ul>`;hideResults(true);return}
+  $("errors").hidden=true;hideResults(false);
+  const U=settings.unit,D=settings.deadline;
+  const n=acts.length;
+  const te=acts.map(a=>(a.o+4*a.m+a.p)/6),va=acts.map(a=>((a.p-a.o)/6)**2);
+  const c=cpm(acts,order,te);const T=c.T;
+  const tf=acts.map((a,k)=>c.ls[k]-c.es[k]);
+  const ff=acts.map((a,k)=>(a.si.length?Math.min(...a.si.map(s=>c.es[s])):T)-c.ef[k]);
+  const crit=tf.map(v=>Math.abs(v)<1e-7);
+  // one critical path: walk back from a critical end activity, choosing the critical predecessor with largest path variance
+  const pv=new Float64Array(n),from=new Int32Array(n).fill(-1);
+  for(const k of order){if(!crit[k])continue;let best=0,bi=-1;for(const p of acts[k].pi){if(crit[p]&&Math.abs(c.ef[p]-c.es[k])<1e-7&&pv[p]>=best){best=pv[p];bi=p}}pv[k]=best+va[k];from[k]=bi}
+  let end=-1;for(let k=0;k<n;k++)if(crit[k]&&Math.abs(c.ef[k]-T)<1e-7&&(end<0||pv[k]>pv[end]))end=k;
+  const path=[];for(let k=end;k>=0;k=from[k])path.unshift(k);
+  const varT=pv[end],sdT=Math.sqrt(varT);
+  const pertP=d=>sdT>0?phi((d-T)/sdT):(d>=T?1:0);
+  // Monte Carlo
+  const N=settings.runs,rng=mulberry(settings.fixed?1959:(Math.random()*2**32)>>>0);
+  const tot=new Float64Array(N),cc=new Uint32Array(n),dur=new Float64Array(n);
+  for(let r=0;r<N;r++){
+    for(let k=0;k<n;k++)dur[k]=betaPert(rng,acts[k].o,acts[k].m,acts[k].p);
+    const s=cpm(acts,order,dur);tot[r]=s.T;
+    for(let k=0;k<n;k++)if(s.ls[k]-s.es[k]<EPS*Math.max(1,s.T))cc[k]++;
+  }
+  tot.sort();
+  let mean=0;for(const x of tot)mean+=x;mean/=N;
+  let sd=0;for(const x of tot)sd+=(x-mean)**2;sd=Math.sqrt(sd/Math.max(1,N-1));
+  const q=p=>tot[Math.min(N-1,Math.max(0,Math.ceil(p*N)-1))];
+  const ecdf=d=>{let lo=0,hi=N;while(lo<hi){const mid=(lo+hi)>>1;if(tot[mid]<=d)lo=mid+1;else hi=mid}return lo/N};
+  const hasD=Number.isFinite(D);
+  const mcD=hasD?ecdf(D):NaN,ptD=hasD?pertP(D):NaN;
+
+  // stats
+  const stat=(v,l,cls="")=>`<div class="stat ${cls}"><b>${v}</b><span>${l}</span></div>`;
+  $("stats").innerHTML=[
+    stat(`${fmt(T)} ${U}`,"CPM duration (expected times)"),
+    stat(`${fmt(mean)} ${U}`,`Monte Carlo mean (${mean-T>=0?"+":""}${fmt(mean-T)} merge bias)`),
+    hasD?stat(`${(mcD*100).toFixed(0)} %`,`chance of finishing by ${D} ${U} (PERT says ${(ptD*100).toFixed(0)} %)`,mcD<0.5?"warn":""):"",
+    stat(`${fmt(q(.5))} ${U}`,"P50 finish"),
+    stat(`${fmt(q(.8))} ${U}`,"P80 finish"),
+    stat(`${fmt(q(.9))} ${U}`,"P90 finish"),
+  ].join("");
+  $("cp").textContent=path.map(k=>acts[k].id).join(" → ")+`   σ = ${fmt(sdT)} ${U}`+(crit.filter(Boolean).length>path.length?"   (another path ties; see table)":"");
+
+  // gantt
+  gantt(acts,order,c,tf,crit,T,hasD?D:null,U);
+
+  // progress curve
+  const useCost=settings.weight==="cost"&&acts.some(a=>a.cost>0);
+  const w=acts.map((a,k)=>useCost?a.cost:te[k]);const W=w.reduce((s,x)=>s+x,0)||1;
+  const G=160,grid=[];for(let i=0;i<=G;i++)grid.push(T*i/G);
+  const prog=(st)=>grid.map(t=>{let s=0;for(let k=0;k<n;k++){const d=te[k];s+=w[k]*(d>0?Math.min(Math.max((t-st[k])/d,0),1):(t>=st[k]?1:0))}return 100*s/W});
+  const early=prog(c.es),late=prog(c.ls);
+  chart("c1",{label:"Planned progress S-curve",x0:0,x1:niceMax(T),xlabel:U,X:grid,band:true,
+    series:[{name:"Early start",v:early,c:"var(--s1)"},{name:"Late start",v:late,c:"var(--s2)"}],
+    refs:[],tipX:v=>`${U[0].toUpperCase()+U.slice(1,-1)} ${fmt(v)}`,tipExtra:i=>`<div style="color:var(--muted)">Gap ${fmt(early[i]-late[i],1)} pts</div>`});
+
+  // probability curve
+  let lo=Math.min(tot[0],T-3*sdT),hi=Math.max(tot[N-1],T+3*sdT);if(hi<=lo){lo=T-1;hi=T+1}
+  const P=140,xs=[];for(let i=0;i<=P;i++)xs.push(lo+(hi-lo)*i/P);
+  const mc=xs.map(d=>100*ecdf(d)),pt=xs.map(d=>100*pertP(d));
+  const x0=Math.floor(lo),x1=Math.ceil(hi);
+  chart("c2",{label:"Completion probability S-curve",x0,x1,xlabel:`finish by (${U})`,X:xs,
+    series:[{name:"Monte Carlo",v:mc,c:"var(--s1)"},{name:"Classical PERT",v:pt,c:"var(--s2)"}],
+    refs:hasD&&D>=x0&&D<=x1?[{x:D,text:`Deadline ${D}`}]:[],
+    marks:[{x:q(.8),y:80,c:"var(--s1)",text:`P80 ${fmt(q(.8),1)}`}],
+    tipX:v=>`By ${fmt(v)} ${U}`});
+
+  // table
+  const ord=order.slice();
+  $("out").innerHTML=`<thead><tr><th>ID</th><th>Description</th><th>o</th><th>m</th><th>p</th><th>t<sub>e</sub></th><th>σ²</th><th>ES</th><th>EF</th><th>LS</th><th>LF</th><th>TF</th><th>FF</th><th></th><th>Criticality</th></tr></thead><tbody>`+
+    ord.map(k=>{const a=acts[k],ci=cc[k]/N;return `<tr><td>${esc(a.id)}</td><td>${esc(a.desc)}</td><td>${a.o}</td><td>${a.m}</td><td>${a.p}</td><td>${fmt(te[k])}</td><td>${fmt(va[k])}</td><td>${fmt(c.es[k])}</td><td>${fmt(c.ef[k])}</td><td>${fmt(c.ls[k])}</td><td>${fmt(c.lf[k])}</td><td>${fmt(tf[k])}</td><td>${fmt(ff[k])}</td><td>${crit[k]?'<span class="pill">critical</span>':""}</td><td><span class="bar" style="width:${Math.round(ci*60)}px"></span>${(ci*100).toFixed(1)} %</td></tr>`}).join("")+"</tbody>";
+
+  // curve csv
+  const lines=["section,time,series_1,series_2","progress,time,early_start_pct,late_start_pct"];
+  grid.forEach((t,i)=>lines.push(`progress,${t.toFixed(3)},${early[i].toFixed(2)},${late[i].toFixed(2)}`));
+  lines.push("probability,finish_by,monte_carlo_pct,classical_pert_pct");
+  xs.forEach((t,i)=>lines.push(`probability,${t.toFixed(3)},${mc[i].toFixed(2)},${pt[i].toFixed(2)}`));
+  $("curve-csv").value=lines.join("\n");
+}
+function niceMax(v){if(v<=0)return 1;const s=niceStep(v);return Math.ceil(v/s)*s}
+function niceStep(range,target=8){const raw=range/target,p=10**Math.floor(Math.log10(raw)),f=raw/p;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p}
+
+/* ---------- SVG charts ---------- */
+const NS="http://www.w3.org/2000/svg";
+function el(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function txt(p,x,y,s,o={}){const t=el("text",Object.assign({x,y,fill:"var(--muted)","font-size":12,"font-family":"var(--mono)"},o),p);t.textContent=s;return t}
+function chart(id,cfg){
+  const host=$(id);host.innerHTML="";
+  const W=560,H=330,m={t:14,r:18,b:42,l:44},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const x=v=>m.l+(v-cfg.x0)/(cfg.x1-cfg.x0)*iw,y=v=>m.t+ih-v/100*ih;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":cfg.label},host);
+  for(let v=0;v<=100;v+=25){el("line",{x1:m.l,x2:m.l+iw,y1:y(v),y2:y(v),stroke:"var(--grid)","stroke-width":1},svg);txt(svg,m.l-8,y(v)+4,v+"%",{"text-anchor":"end"})}
+  const st=niceStep(cfg.x1-cfg.x0,6);
+  for(let v=Math.ceil(cfg.x0/st)*st;v<=cfg.x1+1e-9;v+=st)txt(svg,x(v),H-m.b+18,+v.toFixed(4),{"text-anchor":"middle"});
+  txt(svg,m.l+iw,H-6,cfg.xlabel,{"text-anchor":"end","font-family":"var(--body)"});
+  el("line",{x1:m.l,x2:m.l+iw,y1:y(0),y2:y(0),stroke:"var(--muted)","stroke-width":1},svg);
+  const X=cfg.X;const path=v=>X.map((xv,i)=>`${i?"L":"M"}${x(xv).toFixed(1)},${y(v[i]).toFixed(1)}`).join("");
+  if(cfg.band){let d=path(cfg.series[0].v);for(let i=X.length-1;i>=0;i--)d+=`L${x(X[i]).toFixed(1)},${y(cfg.series[1].v[i]).toFixed(1)}`;el("path",{d:d+"Z",fill:"var(--s1)","fill-opacity":.1,stroke:"none"},svg)}
+  (cfg.refs||[]).forEach(r=>{el("line",{x1:x(r.x),x2:x(r.x),y1:m.t,y2:y(0),stroke:"var(--fg2)","stroke-width":1,"stroke-dasharray":"4 3"},svg);txt(svg,x(r.x)+5,m.t+11,r.text,{fill:"var(--fg2)","font-family":"var(--body)"})});
+  cfg.series.forEach(s=>el("path",{d:path(s.v),fill:"none",stroke:s.c,"stroke-width":2,"stroke-linejoin":"round","stroke-linecap":"round"},svg));
+  (cfg.marks||[]).forEach(p=>{if(p.x<cfg.x0||p.x>cfg.x1)return;el("circle",{cx:x(p.x),cy:y(p.y),r:4.5,fill:p.c,stroke:"var(--bg)","stroke-width":2},svg);txt(svg,x(p.x)+9,y(p.y)+14,p.text,{fill:"var(--fg)"})});
+  const cross=el("line",{y1:m.t,y2:y(0),stroke:"var(--fg2)","stroke-width":1,opacity:0},svg);
+  const dots=cfg.series.map(s=>el("circle",{r:4.5,fill:s.c,stroke:"var(--bg)","stroke-width":2,opacity:0},svg));
+  const tip=document.createElement("div");tip.className="tip";tip.hidden=true;host.appendChild(tip);
+  const hit=el("rect",{x:m.l,y:m.t,width:iw,height:ih,fill:"transparent"},svg);
+  function show(ev){
+    const r=svg.getBoundingClientRect(),sx=(ev.clientX-r.left)*W/r.width,v=cfg.x0+(sx-m.l)/iw*(cfg.x1-cfg.x0);
+    let i=0,b=Infinity;X.forEach((xv,k)=>{const d=Math.abs(xv-v);if(d<b){b=d;i=k}});
+    const px=x(X[i]);cross.setAttribute("x1",px);cross.setAttribute("x2",px);cross.setAttribute("opacity",.5);
+    cfg.series.forEach((s,k)=>{dots[k].setAttribute("cx",px);dots[k].setAttribute("cy",y(s.v[i]));dots[k].setAttribute("opacity",1)});
+    tip.innerHTML=`<div>${cfg.tipX(X[i])}</div>`+cfg.series.map(s=>`<div><span class="k" style="background:${s.c}"></span>${s.name} ${s.v[i].toFixed(1)}%</div>`).join("")+(cfg.tipExtra?cfg.tipExtra(i):"");
+    tip.hidden=false;const top=Math.min(...cfg.series.map(s=>y(s.v[i])));
+    tip.style.left=Math.max(80,Math.min(r.width-80,px*r.width/W))+"px";tip.style.top=Math.max(64,top*r.height/H-10)+"px";
+  }
+  function hide(){tip.hidden=true;cross.setAttribute("opacity",0);dots.forEach(d=>d.setAttribute("opacity",0))}
+  hit.addEventListener("pointermove",show);hit.addEventListener("pointerdown",show);hit.addEventListener("pointerleave",hide);
+}
+function gantt(acts,order,c,tf,crit,T,D,U){
+  const host=$("gantt");host.innerHTML="";
+  const rowH=28,lw=200,W=960,m={t:8,r:24,b:34};
+  const H=m.t+m.b+rowH*acts.length,iw=W-lw-m.r;
+  const xmax=niceMax(Math.max(T,D||0));const x=v=>lw+v/xmax*iw;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"Gantt chart of the early-start schedule"},host);
+  host.style.minWidth="560px";
+  const st=niceStep(xmax,8);
+  for(let v=0;v<=xmax+1e-9;v+=st){el("line",{x1:x(v),x2:x(v),y1:m.t,y2:H-m.b,stroke:"var(--grid)","stroke-width":1},svg);txt(svg,x(v),H-m.b+16,+v.toFixed(4),{"text-anchor":"middle"})}
+  txt(svg,W-m.r,H-4,U,{"text-anchor":"end","font-family":"var(--body)"});
+  const tip=document.createElement("div");tip.className="tip";tip.hidden=true;host.appendChild(tip);
+  order.forEach((k,j)=>{
+    const a=acts[k],yy=m.t+j*rowH,bh=12,by=yy+(rowH-bh)/2;
+    const label=(a.id+(a.desc?"  "+a.desc:"")),short=label.length>28?label.slice(0,27)+"…":label;
+    txt(svg,8,yy+rowH/2+4,short,{fill:"var(--fg2)","font-family":"var(--body)","font-size":12.5});
+    if(tf[k]>1e-7){el("line",{x1:x(c.ef[k]),x2:x(c.lf[k]),y1:by+bh/2,y2:by+bh/2,stroke:"var(--muted)","stroke-width":2},svg);el("line",{x1:x(c.lf[k]),x2:x(c.lf[k]),y1:by+2,y2:by+bh-2,stroke:"var(--muted)","stroke-width":2},svg)}
+    const wdt=Math.max(2,x(c.ef[k])-x(c.es[k]));
+    el("rect",{x:x(c.es[k]),y:by,width:wdt,height:bh,rx:3,fill:crit[k]?"var(--s2)":"var(--s1)"},svg);
+    const hit=el("rect",{x:0,y:yy,width:W,height:rowH,fill:"transparent"},svg);
+    hit.addEventListener("pointermove",ev=>{const r=svg.getBoundingClientRect();tip.innerHTML=`<div><b>${esc(a.id)}</b> ${esc(a.desc)}</div><div>Start ${c.es[k].toFixed(2)} → finish ${c.ef[k].toFixed(2)}</div><div>Float ${tf[k].toFixed(2)} ${U}${crit[k]?" · critical":""}</div>`;tip.hidden=false;tip.style.left=Math.max(110,Math.min(r.width-110,ev.clientX-r.left))+"px";tip.style.top=((yy)*r.height/H)+"px"});
+    hit.addEventListener("pointerleave",()=>tip.hidden=true);
+  });
+  if(D!=null){el("line",{x1:x(D),x2:x(D),y1:m.t,y2:H-m.b,stroke:"var(--fg2)","stroke-width":1.5,"stroke-dasharray":"5 4"},svg)}
+}
+
+load();syncSettingsUI();renderRows();compute();
+})();
+</script>
+</body>
+</html>

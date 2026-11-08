@@ -7,6 +7,10 @@ practitioners use instead. Every number in §5 and §6 is printed by
 [`scripts/pert_cpm.py`](../scripts/pert_cpm.py) (stdlib Python, ~3 s), so it can be re-run rather
 than trusted.
 
+**Try it:** [`docs/pert-cpm-planner.html`](pert-cpm-planner.html) is a single-file interactive planner.
+Download it and open it in any browser; it needs no install or server. Enter your own activities and it computes the
+critical path, float, Monte Carlo deadline odds, a Gantt chart and both S-curves.
+
 ---
 
 ## 1. One-paragraph summary
