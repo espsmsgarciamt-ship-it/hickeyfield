@@ -3,7 +3,7 @@
 **2026-11-08.** A self-contained reference on the Program Evaluation and Review Technique (PERT)
 and the Critical Path Method (CPM): where they came from, how the computations work, what the
 statistics actually assume, where the classical method is known to be wrong, and what
-practitioners use instead. Every number in §5 is printed by
+practitioners use instead. Every number in §5 and §6 is printed by
 [`scripts/pert_cpm.py`](../scripts/pert_cpm.py) (stdlib Python, ~3 s), so it can be re-run rather
 than trusted.
 
@@ -152,7 +152,42 @@ What this shows:
 - G has 12 days of float and is never critical, so it's safe to put the least
   senior resource on it, or to schedule it late.
 
-## 6. What to use in practice
+## 6. S-curves from the same network
+
+The CPM and Monte Carlo results give two different S-curves. Run
+`python3 scripts/pert_cpm.py --scurve-json out.json` to get both series.
+
+### 6.1 Planned-progress S-curve (the "banana")
+Spread each activity's work evenly from start to finish and add it up over time. Using ES/EF
+gives the **early-start curve**, and LS/LF gives the **late-start curve**. Here the weight is
+expected duration (one person per activity). Use a budget per activity for a cost-loaded curve
+(the planned-value line in earned value management), or labour hours for a resource-loaded one.
+
+| Day | Early start | Late start | Gap |
+|---|---|---|---|
+| 2 | 6.3 % | 6.3 % | 0.0 pts |
+| 4 | 16.8 % | 12.6 % | 4.2 pts |
+| 6 | 34.0 % | 25.1 % | 8.9 pts |
+| 8 | 46.6 % | 37.7 % | 8.9 pts |
+| 10 | 59.2 % | 50.3 % | 8.9 pts |
+| 12 | 71.7 % | 62.8 % | 8.9 pts |
+| 14 | 84.3 % | 75.4 % | 8.9 pts |
+| 16 | 90.6 % | 84.8 % | 5.8 pts |
+| 18 | 96.9 % | 96.9 % | 0.0 pts |
+
+The two curves meet at the start and the finish, and the band between them is float.
+If actual progress falls below the late-start curve, the end date is already slipping. Here
+that means at least 50 % of the work must be complete by day 10. The band is narrow, at most
+8.9 points, because most of the work sits on or near the critical path.
+
+### 6.2 Probability S-curve (completion confidence)
+This is the cumulative distribution of the finish date: the Monte Carlo runs sorted and plotted
+as P(finish ≤ D), alongside the classical PERT normal curve Φ((D − Tₑ)/σ_T). The Monte Carlo
+curve sits to the right of the PERT curve everywhere, so dates read off the PERT curve are always
+too early. Reading across: P50 = 19.76, P80 = 21.56, P90 = 22.56 days. At day 20, the Monte Carlo
+curve gives 54 % against PERT's 68 %.
+
+## 7. What to use in practice
 
 1. **Build the network with CPM**: AON, FS by default, explicit lags. Use float to decide where
    attention goes, and recompute whenever actuals come in.
@@ -170,7 +205,7 @@ built in or available as add-ons (e.g. Primavera Risk Analysis, Safran Risk, @RI
 `networkx.dag_longest_path` does the deterministic pass, and the ~100-line script here does
 both passes, float and a simulation with no dependencies.
 
-## 7. References
+## 8. References
 
 - D. G. Malcolm, J. H. Roseboom, C. E. Clark, W. Fazar. "Application of a Technique for Research
   and Development Program Evaluation." *Operations Research* 7(5):646–669, 1959.

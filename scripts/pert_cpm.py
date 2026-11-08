@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """PERT/CPM reference implementation and the worked example in docs/PERT-CPM.md.
 
-Stdlib only. Run:  python3 scripts/pert_cpm.py
-Every number in docs/PERT-CPM.md section 5 is printed by this script, so the
-document can be re-checked rather than trusted.
+Stdlib only. Run:  python3 scripts/pert_cpm.py [--scurve-json PATH]
+Every number in docs/PERT-CPM.md sections 5 and 6 is printed by this script, so
+the document can be re-checked rather than trusted. --scurve-json also writes
+the S-curve series (progress envelope + completion probability) as JSON.
 """
 from __future__ import annotations
 
+import json
 import math
 import random
+import sys
 from dataclasses import dataclass, field
 
 
@@ -99,6 +102,20 @@ ACTS = {a.name: a for a in [
 ]}
 
 
+def progress_curve(acts, start, finish, grid):
+    """Cumulative % of planned work done at each t, work spread evenly over each activity.
+
+    Weight = expected duration (one person per activity). Swap in a budget or
+    labour-hours field for a cost- or resource-loaded S-curve; the shape logic is the same.
+    """
+    total = sum(finish[n] - start[n] for n in acts)
+    out = []
+    for t in grid:
+        done = sum(min(max(t - start[n], 0.0), finish[n] - start[n]) for n in acts)
+        out.append(100 * done / total)
+    return out
+
+
 def main() -> None:
     dur = {k: a.te for k, a in ACTS.items()}
     order, es, ef, ls, lf, tf, ff, T = cpm(ACTS, dur)
@@ -137,6 +154,7 @@ def main() -> None:
             if abs(tf_s[k]) < 1e-9:
                 crit_count[k] += 1
     totals.sort()
+    T_crit_sd = sd_T
     mean = sum(totals) / N
     sd = math.sqrt(sum((x - mean) ** 2 for x in totals) / (N - 1))
     pct = lambda q: totals[int(q * N) - 1]
@@ -150,6 +168,45 @@ def main() -> None:
     print("\nCriticality index (share of runs in which the activity was critical):")
     for k in order:
         print(f"  {k}: {crit_count[k] / N:.1%}")
+
+    # S-curve 1: planned progress envelope (early-start vs late-start "banana").
+    grid = [i * 0.25 for i in range(int(T / 0.25) + 1)]
+    if grid[-1] < T:
+        grid.append(T)
+    early = progress_curve(ACTS, es, ef, grid)
+    late = progress_curve(ACTS, ls, lf, grid)
+    print("\n## Progress S-curve (% of planned work complete)")
+    print("| Day | Early start | Late start | Gap |")
+    print("|---|---|---|---|")
+    for day in [2, 4, 6, 8, 10, 12, 14, 16, 18]:
+        i = grid.index(float(day))
+        print(f"| {day} | {early[i]:.1f} % | {late[i]:.1f} % | {early[i] - late[i]:.1f} pts |")
+    gaps = [e - l for e, l in zip(early, late)]
+    gi = max(range(len(gaps)), key=gaps.__getitem__)
+    print(f"Widest gap: {gaps[gi]:.1f} pts at day {grid[gi]:.2f}")
+
+    # S-curve 2: probability of completion by date (Monte Carlo ECDF vs PERT normal).
+    dates = [round(14 + i * 0.25, 2) for i in range(int((30 - 14) / 0.25) + 1)]
+    mc = []
+    j = 0
+    for D in dates:
+        while j < N and totals[j] <= D:
+            j += 1
+        mc.append(100 * j / N)
+    pert = [100 * phi((D - T) / T_crit_sd) for D in dates]
+
+    if "--scurve-json" in sys.argv:
+        path = sys.argv[sys.argv.index("--scurve-json") + 1]
+        with open(path, "w") as f:
+            json.dump({
+                "progress": {"day": grid, "early": [round(x, 2) for x in early],
+                             "late": [round(x, 2) for x in late]},
+                "probability": {"day": dates, "monte_carlo": [round(x, 2) for x in mc],
+                                "pert": [round(x, 2) for x in pert]},
+                "T_pert": T, "mc_mean": round(mean, 2),
+                "P50": round(pct(0.50), 2), "P80": round(pct(0.80), 2), "P90": round(pct(0.90), 2),
+            }, f)
+        print(f"\nWrote S-curve data to {path}")
 
 
 if __name__ == "__main__":
