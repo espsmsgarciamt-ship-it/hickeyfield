@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Dependency, Project } from "../model";
 import type { ComputedTask, Schedule } from "../schedule";
 import { summaryProgress } from "./TaskGrid";
@@ -28,6 +28,10 @@ export interface ChartHandlers {
 }
 
 const BAR_H = 18;
+/** Fingers need bigger targets than a mouse. */
+const COARSE = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+const HANDLE_W = COARSE ? 22 : 8;
+const KNOB_HIT = COARSE ? 15 : 7;
 const BAR_Y = (ROW_H - BAR_H) / 2;
 
 export function GanttChart({
@@ -50,6 +54,21 @@ export function GanttChart({
 } & ChartHandlers) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  /** Set by pointerdown (which fires before touchstart) when a drag begins. */
+  const dragging = useRef(false);
+
+  // A finger on the selected bar drags it; anywhere else it scrolls. CSS
+  // touch-action is ignored on SVG shapes, so stop the scroll here instead
+  // (React's touch listeners are passive and cannot).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onTouchStart = (e: TouchEvent) => {
+      if (dragging.current) e.preventDefault();
+    };
+    svg.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => svg.removeEventListener("touchstart", onTouchStart);
+  }, []);
   const tasks = new Map(project.tasks.map((t) => [t.id, t]));
   const rowOf = new Map(schedule.visible.map((id, i) => [id, i]));
   const height = Math.max(schedule.visible.length * ROW_H, 120);
@@ -61,8 +80,15 @@ export function GanttChart({
 
   const start = (e: ReactPointerEvent, id: string, mode: Mode) => {
     if (e.button !== 0) return;
+    // On touch, the first tap only selects, so a finger scrolling the
+    // timeline never drags a bar by accident. Selected bars can be dragged.
+    if (e.pointerType === "touch" && selectedId !== id) {
+      h.onSelect(id);
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
+    dragging.current = true;
     svgRef.current?.setPointerCapture(e.pointerId);
     const p = local(e);
     setDrag({ id, mode, x0: e.clientX, dx: 0, px: p.x, py: p.y, moved: false });
@@ -77,6 +103,7 @@ export function GanttChart({
   };
 
   const onPointerUp = (e: ReactPointerEvent) => {
+    dragging.current = false;
     if (!drag) return;
     svgRef.current?.releasePointerCapture(e.pointerId);
     const days = Math.round(drag.dx / axis.px);
@@ -158,7 +185,10 @@ export function GanttChart({
       height={height}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={() => {
+        dragging.current = false;
+        setDrag(null);
+      }}
     >
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -241,7 +271,8 @@ export function GanttChart({
           return (
             <g key={id} className={`bar milestone${sel ? " selected" : ""}${crit ? " crit" : ""}`} {...common}>
               <path d={`M${cx},${cy - 8} l8,8 l-8,8 l-8,-8 z`} style={{ fill: crit ? undefined : t.color }} className="ms" />
-              <circle cx={cx + 14} cy={cy} r={4.5} className="knob" onPointerDown={(e) => start(e, id, "link")}>
+              <circle cx={cx + 14} cy={cy} r={COARSE ? 6 : 4.5} className="knob" />
+              <circle cx={cx + 14} cy={cy} r={KNOB_HIT} className="knob-hit" onPointerDown={(e) => start(e, id, "link")}>
                 <title>Drag to another task to link</title>
               </circle>
               <text x={cx + 24} y={cy + 4} className="bar-label">
@@ -263,19 +294,26 @@ export function GanttChart({
               <rect x={x} y={y + BAR_Y} width={(w * t.progress) / 100} height={BAR_H} rx={4} className="bar-progress" />
             )}
             <rect
-              x={x + w - 6}
-              y={y + BAR_Y}
-              width={8}
-              height={BAR_H}
+              x={x + w - HANDLE_W * 0.6}
+              y={y + BAR_Y - (COARSE ? 4 : 0)}
+              width={HANDLE_W}
+              height={BAR_H + (COARSE ? 8 : 0)}
               className="resize"
               onPointerDown={(e) => start(e, id, "resize")}
             >
               <title>Drag to change duration</title>
             </rect>
-            <circle cx={x + w + 9} cy={y + ROW_H / 2} r={4.5} className="knob" onPointerDown={(e) => start(e, id, "link")}>
+            <circle cx={x + w + (COARSE ? 22 : 9)} cy={y + ROW_H / 2} r={COARSE ? 6 : 4.5} className="knob" />
+            <circle
+              cx={x + w + (COARSE ? 22 : 9)}
+              cy={y + ROW_H / 2}
+              r={KNOB_HIT}
+              className="knob-hit"
+              onPointerDown={(e) => start(e, id, "link")}
+            >
               <title>Drag to another task to link</title>
             </circle>
-            <text x={x + w + 18} y={y + 19} className="bar-label">
+            <text x={x + w + (COARSE ? 34 : 18)} y={y + 19} className="bar-label">
               {resNames || (w < 60 ? label : "")}
             </text>
             {w >= 60 && (
@@ -297,7 +335,7 @@ export function GanttChart({
         const g = geometry(c);
         return (
           <line
-            x1={g.x + g.w + 9}
+            x1={g.x + g.w + (COARSE ? 22 : 9)}
             y1={r * ROW_H + ROW_H / 2}
             x2={drag.px}
             y2={drag.py}

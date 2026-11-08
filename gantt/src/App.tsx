@@ -17,12 +17,16 @@ import * as ops from "./project";
 import { computeSchedule } from "./schedule";
 import { CommitInput } from "./components/CommitInput";
 import { GanttChart } from "./components/GanttChart";
-import { GRID_WIDTH, GridHeader, TaskGrid } from "./components/TaskGrid";
+import { gridWidth, GridHeader, TaskGrid } from "./components/TaskGrid";
 import { ResourceView, RES_GRID_WIDTH } from "./components/ResourceView";
 import { TaskDialog, type TaskEdit } from "./components/TaskDialog";
 import { makeAxis, PX_PER_DAY, TimelineHeader, type Zoom } from "./components/timeline";
 
 type Tab = "gantt" | "resources";
+
+/** Phones and tablets start with the compact table so the chart gets the room. */
+const NARROW = () => typeof window !== "undefined" && window.innerWidth < 1200;
+const TOUCH = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
 
 export default function App() {
   const history = useHistory(() => loadStored() ?? sampleProject());
@@ -35,6 +39,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("gantt");
   const [toast, setToast] = useState<string | null>(null);
   const [viewport, setViewport] = useState(1200);
+  const [compact, setCompact] = useState(NARROW);
+  const [menuOpen, setMenuOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   const schedule = useMemo(() => computeSchedule(project), [project]);
@@ -90,17 +96,32 @@ export default function App() {
     const e = Math.max(hasTasks ? schedule.projectEndDay : today, today);
     const pad = zoom === "month" ? 30 : zoom === "week" ? 14 : 7;
     const startDay = s - pad - ((((s - pad + 4) % 7) + 6) % 7); // back to a Monday
-    const gridW = tab === "gantt" ? GRID_WIDTH : RES_GRID_WIDTH;
+    const gridW = tab === "gantt" ? gridWidth(compact) : RES_GRID_WIDTH;
     return makeAxis(startDay, e + pad * 3, px, Math.max(400, viewport - gridW));
-  }, [project.tasks.length, schedule, today, zoom, px, viewport, tab]);
+  }, [project.tasks.length, schedule, today, zoom, px, viewport, tab, compact]);
 
   const scrollToDay = useCallback(
-    (day: number) => {
+    (day: number, smooth = true) => {
       const el = scroller.current;
-      if (el) el.scrollTo({ left: Math.max(0, axis.x(day) - 3 * px * (zoom === "day" ? 3 : 7)), behavior: "smooth" });
+      if (!el) return;
+      const gridW = tab === "gantt" ? gridWidth(compact) : RES_GRID_WIDTH;
+      const visible = Math.max(0, el.clientWidth - gridW);
+      const margin = Math.min(3 * px * (zoom === "day" ? 3 : 7), visible * 0.2);
+      el.scrollTo({ left: Math.max(0, axis.x(day) - margin), behavior: smooth ? "smooth" : "auto" });
     },
-    [axis, px, zoom],
+    [axis, px, zoom, tab, compact],
   );
+
+  // Open each project scrolled to today (or to its start, if today is outside
+  // it), so a phone-sized screen never opens on empty days.
+  const [opened, setOpened] = useState(0);
+  const openedRef = useRef(-1);
+  useEffect(() => {
+    if (openedRef.current === opened) return;
+    openedRef.current = opened;
+    const inside = today >= schedule.projectStartDay && today <= schedule.projectEndDay;
+    scrollToDay(inside || !project.tasks.length ? today : schedule.projectStartDay, false);
+  });
 
   // --- task commands -------------------------------------------------------
   const addTask = () => {
@@ -166,6 +187,7 @@ export default function App() {
   const newProject = () => {
     if (!confirm("Start a new, empty project? Unsaved changes to this one will be lost.")) return;
     reset(emptyProject());
+    setOpened((n) => n + 1);
     setSelectedId(null);
   };
   const openProject = async () => {
@@ -173,6 +195,7 @@ export default function App() {
     if (!file) return;
     try {
       reset(parseProjectFile(await file.text(), file.name));
+      setOpened((n) => n + 1);
       setSelectedId(null);
       setToast(`Opened ${file.name}`);
     } catch (e) {
@@ -238,6 +261,20 @@ export default function App() {
   const total = project.tasks.filter((t) => !schedule.byId.get(t.id)!.isSummary);
   const doneShare = total.length ? Math.round(total.reduce((s, t) => s + t.progress, 0) / total.length) : 0;
 
+  const fileButtons = (
+    <>
+      <button onClick={newProject}>New</button>
+      <button onClick={openProject} title="Open a saved project or a GanttProject .gan file">
+        Open…
+      </button>
+      <button onClick={saveProject} title="Save (Ctrl+S)">
+        Save
+      </button>
+      <button onClick={exportCSV}>Export CSV</button>
+      <button onClick={() => window.print()}>Print</button>
+    </>
+  );
+
   return (
     <div className="app">
       <header className="topbar">
@@ -263,21 +300,33 @@ export default function App() {
           </button>
         </nav>
         <div className="file-actions">
-          <button onClick={newProject}>New</button>
-          <button onClick={openProject} title="Open a saved project or a GanttProject .gan file">
-            Open…
+          {fileButtons}
+        </div>
+        <div className="file-menu">
+          <button aria-expanded={menuOpen} aria-label="File menu" onClick={() => setMenuOpen(!menuOpen)}>
+            File ▾
           </button>
-          <button onClick={saveProject} title="Save (Ctrl+S)">
-            Save
-          </button>
-          <button onClick={exportCSV}>Export CSV</button>
-          <button onClick={() => window.print()}>Print</button>
+          {menuOpen && (
+            <>
+              <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
+              <div className="menu-pop" onClick={() => setMenuOpen(false)}>
+                {fileButtons}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
       <div className="toolbar">
         {tab === "gantt" && (
           <div className="group">
+            <button
+              onClick={() => setCompact(!compact)}
+              aria-pressed={!compact}
+              title={compact ? "Show all table columns" : "Show only task names"}
+            >
+              {compact ? "Columns ▸" : "◂ Columns"}
+            </button>
             <button className="primary" onClick={addTask} title="New task (Insert)">
               + Task
             </button>
@@ -350,9 +399,9 @@ export default function App() {
 
       <div className="workspace" ref={scroller}>
         {tab === "gantt" ? (
-          <div className="sheet" style={{ width: GRID_WIDTH + axis.width }}>
+          <div className="sheet" style={{ width: gridWidth(compact) + axis.width }}>
             <div className="head-row">
-              <GridHeader />
+              <GridHeader compact={compact} />
               <TimelineHeader axis={axis} zoom={zoom} />
             </div>
             <div className="body-row">
@@ -360,6 +409,7 @@ export default function App() {
                 project={project}
                 schedule={schedule}
                 selectedId={selectedId}
+                compact={compact}
                 onSelect={selectTask}
                 onOpen={setDialogId}
                 onToggle={(id) =>
@@ -404,7 +454,10 @@ export default function App() {
                 <button className="primary" onClick={addTask}>
                   + Add the first task
                 </button>
-                <button onClick={() => reset(sampleProject())}>Load the example plan</button>
+                <button onClick={() => {
+                    reset(sampleProject());
+                    setOpened((n) => n + 1);
+                  }}>Load the example plan</button>
               </div>
             )}
           </div>
@@ -433,7 +486,11 @@ export default function App() {
           </span>
         )}
         {schedule.hasCycle && <span className="warn">Some links form a loop and were ignored.</span>}
-        <span className="hint">Drag bars to move · drag the right edge to resize · drag the dot to link · double-click to edit</span>
+        <span className="hint">
+          {TOUCH
+            ? "Tap a bar to select it, then drag to move · drag its edge to resize · drag the dot to link · Edit… for details"
+            : "Drag bars to move · drag the right edge to resize · drag the dot to link · double-click to edit"}
+        </span>
       </footer>
 
       {dialogId && (

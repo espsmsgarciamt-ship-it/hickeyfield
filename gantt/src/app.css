@@ -53,6 +53,10 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
+  /* No double-tap zoom delay on touch screens. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 button,
 input,
@@ -247,6 +251,10 @@ button.icon {
   height: 48px;
   align-items: flex-end;
 }
+.grid-head.compact .cell:not(.col-wbs, .col-name),
+.grid-body.compact .cell:not(.col-wbs, .col-name) {
+  display: none;
+}
 .grid-head .cell {
   font-weight: 600;
   color: var(--muted);
@@ -384,8 +392,11 @@ button.icon {
   display: block;
   flex: none;
   user-select: none;
-  touch-action: none;
+  -webkit-user-select: none;
+  /* Fingers pan the timeline; a selected bar captures a drag (see GanttChart). */
+  touch-action: pan-x pan-y;
 }
+
 .row-bg {
   fill: transparent;
 }
@@ -456,7 +467,14 @@ button.icon {
 .bar.selected .knob {
   opacity: 1;
 }
-.knob:hover {
+.knob {
+  pointer-events: none;
+}
+.knob-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.bar:has(.knob-hit:hover) .knob {
   stroke: var(--accent);
   fill: var(--accent-soft);
 }
@@ -688,12 +706,146 @@ button.icon {
   margin: 0;
 }
 
-@media (max-width: 760px) {
+/* ---- file menu (small screens) ----------------------------------------- */
+.file-menu {
+  display: none;
+  position: relative;
+}
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.menu-pop {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.menu-pop button {
+  text-align: left;
+  border: none;
+  height: 40px;
+}
+
+@media (max-width: 900px) {
+  .file-actions {
+    display: none;
+  }
+  .file-menu {
+    display: block;
+  }
   .topbar {
+    gap: 10px;
+    padding: 6px 10px;
+  }
+  .brand {
+    flex: 1;
+  }
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 14px;
+    padding: 6px 10px;
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .statusbar {
     flex-wrap: wrap;
+    gap: 4px 14px;
+    padding: 5px 10px;
+  }
+  .statusbar .hint {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Touch screens get finger-sized controls. */
+@media (pointer: coarse) {
+  button {
+    height: 36px;
+    padding: 4px 12px;
+  }
+  .tabs button {
+    height: 32px;
+  }
+  .toggle input {
+    width: 20px;
+    height: 20px;
+  }
+  .grid-row input {
+    font-size: 14px;
+  }
+  .twisty {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+  }
+  .knob {
+    opacity: 0;
+  }
+  .bar.selected .knob {
+    opacity: 1;
+  }
+  .dialog input:not([type="checkbox"]),
+  .dialog select,
+  .dialog textarea {
+    font-size: 16px; /* stops Android/iOS zooming into focused fields */
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 600px) {
+  .project-name {
+    font-size: 15px;
   }
   .statusbar .hint {
     display: none;
+  }
+  .dialog {
+    width: 100vw;
+    max-width: 100vw;
+    margin: auto 0 0;
+    border-radius: 14px 14px 0 0;
+  }
+  .dialog form {
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    max-height: 92vh;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .span2 {
+    grid-column: auto;
+  }
+  .preds tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  .preds td {
+    padding: 0;
+  }
+  .preds td:first-child {
+    width: 100%;
+  }
+  .preds td:nth-child(2) {
+    flex: 1;
   }
 }
 

@@ -13,7 +13,19 @@ export const GRID_COLUMNS = [
   { key: "pct", label: "%", width: 50 },
   { key: "res", label: "Assigned", width: 110 },
 ] as const;
-export const GRID_WIDTH = GRID_COLUMNS.reduce((s, c) => s + c.width, 0);
+/** Compact mode (phones) shows only the number and name columns. */
+const COMPACT_KEYS = new Set(["wbs", "name"]);
+const COMPACT_NAME = 168;
+export function colWidth(key: string, compact: boolean): number {
+  if (compact && key === "name") return COMPACT_NAME;
+  return GRID_COLUMNS.find((c) => c.key === key)!.width;
+}
+export function gridWidth(compact: boolean): number {
+  return GRID_COLUMNS.filter((c) => !compact || COMPACT_KEYS.has(c.key)).reduce(
+    (s, c) => s + colWidth(c.key, compact),
+    0,
+  );
+}
 
 export interface GridHandlers {
   onSelect: (id: string) => void;
@@ -26,11 +38,11 @@ export interface GridHandlers {
   onSetProgress: (id: string, pct: number) => void;
 }
 
-export function GridHeader() {
+export function GridHeader({ compact }: { compact: boolean }) {
   return (
-    <div className="grid-head" style={{ width: GRID_WIDTH }}>
+    <div className={`grid-head${compact ? " compact" : ""}`} style={{ width: gridWidth(compact) }}>
       {GRID_COLUMNS.map((c) => (
-        <div key={c.key} className={`cell col-${c.key}`} style={{ width: c.width }}>
+        <div key={c.key} className={`cell col-${c.key}`} style={{ width: colWidth(c.key, compact) }}>
           {c.label}
         </div>
       ))}
@@ -42,16 +54,17 @@ export function TaskGrid({
   project,
   schedule,
   selectedId,
+  compact,
   ...h
-}: { project: Project; schedule: Schedule; selectedId: string | null } & GridHandlers) {
+}: { project: Project; schedule: Schedule; selectedId: string | null; compact: boolean } & GridHandlers) {
   const byId = new Map(project.tasks.map((t) => [t.id, t]));
   const resNames = new Map(project.resources.map((r) => [r.id, r.name]));
   return (
-    <div className="grid-body" style={{ width: GRID_WIDTH }}>
+    <div className={`grid-body${compact ? " compact" : ""}`} style={{ width: gridWidth(compact) }}>
       {schedule.visible.map((id) => {
         const t = byId.get(id)!;
         const c = schedule.byId.get(id)!;
-        const w = (k: string) => GRID_COLUMNS.find((x) => x.key === k)!.width;
+        const w = (k: string) => colWidth(k, compact);
         const fixed = c.isSummary;
         return (
           <div
@@ -66,7 +79,7 @@ export function TaskGrid({
             <div className="cell col-wbs" style={{ width: w("wbs") }}>
               {c.wbs}
             </div>
-            <div className="cell col-name" style={{ width: w("name"), paddingLeft: 4 + c.depth * 16 }}>
+            <div className="cell col-name" style={{ width: w("name"), paddingLeft: 4 + c.depth * (compact ? 10 : 16) }}>
               {c.isSummary ? (
                 <button
                   className="twisty"
@@ -80,7 +93,7 @@ export function TaskGrid({
               )}
               <CommitInput value={t.name} onCommit={(v) => h.onRename(id, v.trim() || t.name)} aria-label="Task name" />
             </div>
-            <div className="cell" style={{ width: w("start") }}>
+            <div className="cell col-start" style={{ width: w("start") }}>
               {fixed ? (
                 <span className="ro">{displayDate(c.startDay)}</span>
               ) : (
@@ -94,14 +107,14 @@ export function TaskGrid({
                 />
               )}
             </div>
-            <div className="cell" style={{ width: w("end") }}>
+            <div className="cell col-end" style={{ width: w("end") }}>
               {fixed || t.milestone ? (
                 <span className="ro">{displayDate(c.endDay)}</span>
               ) : (
                 <CommitInput type="date" value={formatDate(c.endDay)} onCommit={(v) => h.onSetEnd(id, v)} aria-label="End date" />
               )}
             </div>
-            <div className="cell num" style={{ width: w("dur") }}>
+            <div className="cell num col-dur" style={{ width: w("dur") }}>
               {fixed || t.milestone ? (
                 <span className="ro">{c.endIdx - c.startIdx}</span>
               ) : (
@@ -114,7 +127,7 @@ export function TaskGrid({
                 />
               )}
             </div>
-            <div className="cell num" style={{ width: w("pct") }}>
+            <div className="cell num col-pct" style={{ width: w("pct") }}>
               {fixed ? (
                 <span className="ro">{summaryProgress(project, schedule, id)}</span>
               ) : (

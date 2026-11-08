@@ -29,6 +29,25 @@ GanttProject.
   (tasks, nesting, milestones, progress, colours, notes, dependencies,
   resources, allocations), export CSV, print.
 
+## Phones and tablets
+
+The planner is a web app that works on Android (and other) phones and tablets:
+
+- **Install it**: open the site in Chrome, then use ⋮ → *Add to Home screen* /
+  *Install app*. It opens full screen like a native app and **works offline**.
+- **Touch**: swipe to scroll the timeline. Tap a bar to select it, then drag the
+  selected bar to move it, drag its right edge to resize, or drag its dot onto
+  another task to link. Use **Edit…** for the full task details.
+- **Small screens**: phones and tablets start with a compact table (number and
+  name only). **Columns ▸** shows the dates, durations and assignments. File
+  actions live under **File ▾**.
+- Projects are saved in the browser on that device. Use **File ▾ → Save** to
+  keep a copy or move a plan between devices, and **Open…** to load it.
+
+To use it on a device, the built `dist/` folder must be hosted on any static
+web host over HTTPS (for example GitHub Pages, Netlify or Cloudflare Pages).
+HTTPS is required for installing and for offline use.
+
 ## Keyboard
 
 | Keys | Action |
