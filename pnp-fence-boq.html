@@ -86,6 +86,23 @@ details table{margin-top:10px}
 #toast.on{opacity:1}
 textarea{width:100%;min-height:120px;font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
 svg text{fill:var(--muted);font-family:var(--font);font-size:10px}
+.paper{background:#fff;color:#111;border:1px solid var(--line);border-radius:4px;padding:28px 32px;max-width:820px;margin:0 auto;font-size:12px;box-shadow:0 2px 12px rgba(0,0,0,.18)}
+.paper h1{font-size:18px;margin:0 0 2px;color:#0F2A44}
+.paper h2{font-size:13px;color:#0F2A44;border-bottom:2px solid #0F2A44;padding-bottom:3px;margin:18px 0 8px}
+.paper table{font-size:11px}.paper th{background:#0F2A44;color:#fff}.paper td{border-bottom:1px solid #D7DEE8;color:#111}
+.paper tr.sub td{background:#EEF2F6;color:#111}.paper .small{color:#444}
+.paper .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px;margin:10px 0}
+.paper .sign{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:44px}
+.paper .sign div{border-top:1px solid #111;padding-top:4px;text-align:center;font-size:11px}
+@media print{
+  @page{size:A4;margin:14mm}
+  body{background:#fff}
+  header.band,nav.tabs,#toast,.noprint{display:none!important}
+  main>.in>section{display:none!important}
+  #tab-print{display:block!important}
+  .paper{border:0;box-shadow:none;padding:0;max-width:none}
+  .paper h2{break-after:avoid}.paper tr,.paper .sign{break-inside:avoid}
+}
 @media (max-width:820px){.controls,.kpis,.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.bars .r{grid-template-columns:1fr}}
 @media (max-width:460px){.controls,.kpis,.grid2{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
@@ -119,7 +136,7 @@ svg text{fill:var(--muted);font-family:var(--font);font-size:10px}
 </section>
 
 <nav class="tabs" role="tablist" aria-label="Sections" id="tabs">
-  <button role="tab" data-t="overview">Overview</button><button role="tab" data-t="boq">BOQ</button><button role="tab" data-t="detailed">Detailed cost</button><button role="tab" data-t="materials">Materials and labor</button><button role="tab" data-t="scurve">S-curve</button><button role="tab" data-t="scope">Scope</button>
+  <button role="tab" data-t="overview">Overview</button><button role="tab" data-t="boq">BOQ</button><button role="tab" data-t="detailed">Detailed cost</button><button role="tab" data-t="materials">Materials and labor</button><button role="tab" data-t="scurve">S-curve</button><button role="tab" data-t="scope">Scope</button><button role="tab" data-t="print">Print preview</button>
 </nav>
 
 <section id="tab-overview" hidden>
@@ -163,6 +180,11 @@ svg text{fill:var(--muted);font-family:var(--font);font-size:10px}
 </section>
 
 <section id="tab-scope" hidden><div class="card"><h2>Scope of works</h2><div id="scopeList"></div><div class="bar" style="margin-top:14px"><i id="scopeBar" style="width:0%"></i></div><p class="small" id="scopePct"></p></div></section>
+
+<section id="tab-print" hidden>
+  <div class="card noprint row"><div><h2 style="margin:0 0 4px">Print preview</h2><p class="small" style="margin:0">A4 report of the current figures. Some viewers block printing, including the published artifact page. Open <b>pnp-fence-boq.html</b> directly, or run it inside Atlas, to print or save as PDF.</p></div><button class="btn" id="printBtn" type="button">Print / Save as PDF</button></div>
+  <article class="paper" id="paper"></article>
+</section>
 </div></main>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -289,7 +311,7 @@ function render(){
   $('insight').innerHTML=`One gate is <b>${(gShare*100).toFixed(1)}%</b> of a single bay plus gate (${fmt(c.gateEach)} of ${fmt(c.perBay+c.gateEach)}). Its cost spreads thinner as the perimeter grows.`;
   $('dilute').innerHTML='<thead><tr><th class="n">Bays</th><th class="n">Length</th><th class="n">Total</th><th class="n">Per metre</th></tr></thead><tbody>'+[1,5,10,25,50].map(n=>{const t=calc({...p,bays:n},S.boq).total;return`<tr><td class="n">${n}</td><td class="n">${n*4} m</td><td class="n">${fmt(t)}</td><td class="n">${fmt(t/(n*4))}</td></tr>`}).join('')+'</tbody>';
 
-  renderBoq(c);renderDetail();renderMaterials();renderFence(c.total);renderRef();renderScope();
+  renderBoq(c);renderDetail();renderMaterials();renderFence(c.total);renderRef();renderScope();renderPrint(c);
   save();
 }
 
@@ -392,6 +414,23 @@ function renderScope(){
   $('scopePct').textContent=`${Math.round(w)}% progress: ${done} of ${SCOPE.length} items done. In-progress items count as half.`;
 }
 
+/* ---------- Print preview ---------- */
+function renderPrint(c){
+  const p=S.p,date=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+  const boq=c.rows.map(r=>`<tr><td>${esc(r.it.div)}</td><td>${esc(r.it.desc)}</td><td>${esc(r.it.unit)}</td><td class="n">${num(r.it.qty,2)}</td><td class="n">${num(r.it.qty?r.t/r.it.qty:0)}</td><td class="n">${num(r.t)}</td><td class="n">${num(r.t*r.m)}</td></tr>`).join('');
+  let cum=0;
+  const sc=S.f.pct.map((v,i)=>{cum+=v;return`<tr><td>${esc(monthLabel(i))}</td><td class="n">${v.toFixed(2)}%</td><td class="n">${num(c.total*v/100)}</td><td class="n">${cum.toFixed(2)}%</td><td class="n">${num(c.total*cum/100)}</td></tr>`}).join('');
+  const sum=(a,v,b)=>`<tr${b?' class="sub"':''}><td>${a}</td><td class="n">${num(v)}</td></tr>`;
+  $('paper').innerHTML=`<h1>${esc(p.proj||'Project')}</h1><div class="small">Bill of quantities and cost estimate • ${esc(p.loc||'')} • ${esc(date)}</div>
+  <div class="meta"><div><b>Length:</b> ${p.bays*4} m (${p.bays} bays of 4 m)</div><div><b>Gates:</b> ${p.gates}</div><div><b>OCM / Profit / VAT:</b> ${Math.round(p.ocm*100)}% / ${Math.round(p.prof*100)}% / ${Math.round(p.vat*100)}%</div><div><b>OSH and mobilization:</b> ${p.once?'once per project':'per bay'}</div></div>
+  <h2>1. Bill of quantities</h2><table><thead><tr><th>Division</th><th>Item</th><th>Unit</th><th class="n">Qty / bay</th><th class="n">Unit cost (₱)</th><th class="n">Total / bay (₱)</th><th class="n">Project (₱)</th></tr></thead><tbody>${boq}<tr class="sub"><td colspan="6">Total project cost</td><td class="n">${num(c.total)}</td></tr></tbody></table>
+  <h2>2. Cost summary</h2><table style="max-width:420px"><tbody>${sum('EDC (materials + labor)',c.edc)}${sum('OCM',c.ocm)}${sum('Profit',c.prof)}${sum('VAT',c.vat)}${sum('Total project cost',c.total,1)}${sum('SAY (nearest ₱100)',Math.round(c.total/100)*100,1)}${sum('Cost per linear metre',c.total/(p.bays*4))}</tbody></table>
+  <h2>3. Materials</h2><table><thead><tr><th>Material</th><th>Unit</th><th class="n">Qty / bay or gate</th><th class="n">Total qty</th><th class="n">Avg rate (₱)</th><th class="n">Amount (₱)</th></tr></thead><tbody>${$('matBody').innerHTML}${$('matFoot').innerHTML}</tbody></table>
+  <h2>4. Labor</h2><table><thead><tr><th>Trade</th><th class="n">Rate / day (₱)</th><th class="n">Per bay (m-d)</th><th class="n">Per gate (m-d)</th><th class="n">Project (m-d)</th><th class="n">Wages (₱)</th></tr></thead><tbody>${$('labBody').innerHTML}${$('labFoot').innerHTML}</tbody></table>
+  <h2>5. Schedule of payments (S-curve)</h2><table><thead><tr><th>Month</th><th class="n">Monthly %</th><th class="n">Monthly amount (₱)</th><th class="n">Cumulative %</th><th class="n">Cumulative amount (₱)</th></tr></thead><tbody>${sc}</tbody></table>
+  <div class="sign"><div>Prepared by</div><div>Checked by</div><div>Approved by</div></div>`;
+}
+
 /* ---------- Actions ---------- */
 let toastT;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
@@ -414,7 +453,7 @@ function resetData(){
 }
 
 /* ---------- Tabs (hash routed) ---------- */
-const TABS=['overview','boq','detailed','materials','scurve','scope'];
+const TABS=['overview','boq','detailed','materials','scurve','scope','print'];
 function showTab(){
   const h=location.hash.slice(1),t=TABS.includes(h)?h:'overview';
   TABS.forEach(k=>{$('tab-'+k).hidden=k!==t});
@@ -439,6 +478,8 @@ $('boqBody').addEventListener('click',e=>{const b=e.target.closest('[data-del]')
 $('addBtn').addEventListener('click',()=>{S.boq.push({id:'custom'+Date.now(),kind:'item',div:'Custom',desc:'New item',unit:'lot',qty:1,edc:1000});render()});
 $('resetBtn').addEventListener('click',resetData);
 $('copyCsv').addEventListener('click',copyCsv);
+let printed=false;window.addEventListener('beforeprint',()=>{printed=true});
+$('printBtn').addEventListener('click',()=>{printed=false;try{window.print()}catch(e){}if(!printed)toast('This viewer blocks printing. Open the file directly to print.')});
 $('scopeList').addEventListener('change',e=>{const i=e.target.dataset.s;if(i==null)return;S.scope[+i]=e.target.value;renderScope();save()});
 $('detailList').addEventListener('toggle',e=>{const id=e.target.dataset&&e.target.dataset.id;if(!id)return;e.target.open?openSet.add(id):openSet.delete(id)},true);
 
