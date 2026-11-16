@@ -1,0 +1,604 @@
+<title>Estimate Workbench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: navy title band with project switcher, variable strip, KPI row, then a tabbed workspace of tables and charts. */
+:root{
+  --bg:#EEF2F6; --surface:#FFFFFF; --ink:#0F2A44; --muted:#4B5D72; --line:#D7DEE8;
+  --navy:#0F2A44; --navy-ink:#FFFFFF; --navy-muted:#B9C7D8;
+  --gold:#C5A880; --gold-ink:#0F2A44; --gold-line:#8A6A2E;
+  --bar:#0F2A44; --sub:#F1F5F9; --warn:#9A4A00; --warn-bg:#FFF1DC; --ok:#17643A; --ok-bg:#E3F4EA; --bad:#B42318;
+  --font:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B1624; --surface:#12243A; --ink:#E6EDF5; --muted:#9FB0C3; --line:#26394F;
+  --navy:#0A1C30; --navy-muted:#9FB0C3; --gold-line:#E8C87A;
+  --bar:#7FA6D6; --sub:#183049; --warn:#FFC27A; --warn-bg:#3A2A12; --ok:#7FD6A1; --ok-bg:#14301F; --bad:#FF8A80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1624; --surface:#12243A; --ink:#E6EDF5; --muted:#9FB0C3; --line:#26394F;
+  --navy:#0A1C30; --navy-muted:#9FB0C3; --gold-line:#E8C87A;
+  --bar:#7FA6D6; --sub:#183049; --warn:#FFC27A; --warn-bg:#3A2A12; --ok:#7FD6A1; --ok-bg:#14301F; --bad:#FF8A80; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.in{max-width:1220px;margin:0 auto}
+header.band{background:var(--navy);color:var(--navy-ink);padding-block:16px}
+header .in{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end}
+header h1{margin:0;font-size:22px;font-weight:700;text-wrap:balance}
+header h1 span{color:#E8C87A}
+header p{margin:4px 0 0;color:var(--navy-muted);font-size:13px}
+.pbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pbar select{width:min(320px,100%);background:#fff;color:#0F2A44;border-color:transparent}
+.pbar .btn{background:#C5A880;color:#0F2A44}
+main{padding-block:16px 40px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}
+h2,h3{margin:0 0 10px;font-size:15px;font-weight:700}
+h3{font-size:13px;color:var(--muted)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+label.f{display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--muted)}
+input,select,textarea,button{font:inherit;color:inherit}
+input[type=text],input[type=number],input[type=month],select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:14px}
+input[type=number]{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--gold-line);outline-offset:2px}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600}
+.small{font-size:12px;color:var(--muted);line-height:1.55}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--navy);color:var(--navy-ink);border-radius:10px;padding:14px;min-width:0}
+.kpi small{color:var(--navy-muted);display:block}
+.kpi b{display:block;margin:6px 0 2px;font:500 21px var(--mono);overflow-wrap:anywhere}
+.kpi.gold{background:var(--gold);color:var(--gold-ink)}.kpi.gold small{color:var(--gold-ink);opacity:.8}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{padding:9px 14px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-weight:600;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--navy);color:var(--navy-ink);border-color:var(--navy)}
+.btn{background:var(--navy);color:var(--navy-ink);border:0;padding:8px 13px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px}
+.btn.light{background:var(--sub);color:var(--ink);border:1px solid var(--line)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;background:var(--navy);color:var(--navy-ink);padding:8px;font-weight:600;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+th.n{text-align:right;font-family:var(--font)}
+tr.sub td{background:var(--sub);font-weight:700}
+tr.div td{background:var(--sub);font-weight:700;color:var(--muted);font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+tr.detail td{background:var(--sub);padding:12px}
+table input,table select{padding:5px 6px;font-size:13px}
+td input.q{width:100px}td input.u{width:70px}td input.w{width:100%;min-width:150px}
+td input.t{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px}
+.x{border:1px solid var(--line);background:var(--surface);border-radius:6px;min-width:28px;height:28px;cursor:pointer;color:var(--muted)}
+.bars .r{display:grid;grid-template-columns:minmax(120px,220px) 1fr minmax(120px,auto);gap:10px;align-items:center;margin:7px 0;font-size:12px}
+.bars .lbl{font-weight:600;min-width:0}
+.bar{height:12px;background:var(--sub);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--bar);border-radius:99px}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.note{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:13px}
+.empty{padding:28px 12px;text-align:center;color:var(--muted)}
+.err{color:var(--bad);font-weight:600}
+textarea{width:100%;min-height:110px;font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--navy);color:var(--navy-ink);padding:9px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw}
+#toast.on{opacity:1}
+svg text{fill:var(--muted);font-family:var(--font);font-size:10px}
+.paper{background:#fff;color:#111;border:1px solid var(--line);border-radius:4px;padding:28px 32px;max-width:860px;margin:0 auto;font-size:12px;box-shadow:0 2px 12px rgba(0,0,0,.18)}
+.paper h1{font-size:18px;margin:0 0 2px;color:#0F2A44}
+.paper h2{font-size:13px;color:#0F2A44;border-bottom:2px solid #0F2A44;padding-bottom:3px;margin:18px 0 8px}
+.paper table{font-size:11px}.paper th{background:#0F2A44;color:#fff}.paper td{border-bottom:1px solid #D7DEE8;color:#111}
+.paper tr.sub td{background:#EEF2F6;color:#111}.paper tr.div td{background:#F6F8FB;color:#444}.paper .small{color:#444}
+.paper .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px;margin:10px 0}
+.paper .sign{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:44px}
+.paper .sign div{border-top:1px solid #111;padding-top:4px;text-align:center;font-size:11px}
+@media print{
+  @page{size:A4;margin:14mm}
+  body{background:#fff}
+  header.band,nav.tabs,#toast,.noprint,#newBox,#varCard,.kpis{display:none!important}
+  main>.in>section{display:none!important}
+  #tab-report{display:block!important}
+  .paper{border:0;box-shadow:none;padding:0;max-width:none}
+  .paper h2{break-after:avoid}.paper tr,.paper .sign{break-inside:avoid}
+}
+@media (max-width:860px){.grid,.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid3{grid-template-columns:minmax(0,1fr)}.bars .r{grid-template-columns:1fr}}
+@media (max-width:480px){.grid,.kpis,.grid2{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+
+<header class="band gut"><div class="in">
+  <div><h1>Estimate <span>Workbench</span></h1><p id="hdrSub">Detailed cost estimates, BOQ, S-curve and reports</p></div>
+  <div class="pbar">
+    <select id="projSel" aria-label="Project"></select>
+    <button class="btn" type="button" data-act="newProj">New</button>
+    <button class="btn" type="button" data-act="dupProj">Duplicate</button>
+    <button class="btn" type="button" data-act="delProj" id="delProjBtn">Delete</button>
+  </div>
+</div></header>
+
+<main class="gut"><div class="in">
+<section class="card" id="newBox" hidden aria-label="New project">
+  <h2>New project</h2>
+  <div class="grid grid3">
+    <div><label class="f" for="newName">Project name</label><input id="newName" type="text" value="Untitled project"></div>
+    <div><label class="f" for="newTpl">Start from</label><select id="newTpl"><option value="blank">Blank estimate</option><option value="fence">PNP standard perimeter fence (Excel BOQ)</option></select></div>
+    <div style="align-self:end"><button class="btn" type="button" data-act="createProj">Create</button> <button class="btn light" type="button" data-act="cancelNew">Cancel</button></div>
+  </div>
+</section>
+
+<section class="card" id="varCard" aria-label="Project variables"><div id="varStrip"></div></section>
+
+<section class="kpis" aria-label="Key figures">
+  <div class="kpi gold"><small>Total project cost</small><b id="kTotal"></b><small id="kTotalSub"></small></div>
+  <div class="kpi"><small>Direct cost (EDC)</small><b id="kEdc"></b><small id="kEdcSub"></small></div>
+  <div class="kpi"><small>OCM, profit and VAT</small><b id="kMk"></b><small id="kMkSub"></small></div>
+  <div class="kpi"><small id="kMLbl">Cost per measure</small><b id="kM"></b><small id="kMSub"></small></div>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Sections" id="tabs">
+  <button role="tab" data-t="overview">Overview</button><button role="tab" data-t="setup">Setup</button><button role="tab" data-t="estimate">Estimate</button><button role="tab" data-t="rates">Rates</button><button role="tab" data-t="takeoff">Materials and labor</button><button role="tab" data-t="scurve">S-curve</button><button role="tab" data-t="progress">Progress</button><button role="tab" data-t="report">Report</button>
+</nav>
+
+<section id="tab-overview" hidden></section>
+<section id="tab-setup" hidden></section>
+<section id="tab-estimate" hidden></section>
+<section id="tab-rates" hidden></section>
+<section id="tab-takeoff" hidden></section>
+<section id="tab-scurve" hidden></section>
+<section id="tab-progress" hidden></section>
+<section id="tab-report" hidden></section>
+</div></main>
+<datalist id="libNames"></datalist>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);
+const num=(n,d=2)=>new Intl.NumberFormat('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n||0);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct=(a,b)=>b?(a/b*100).toFixed(1)+'%':'0.0%';
+const uid=()=>Math.random().toString(36).slice(2,9);
+const TYPES={M:'Materials',L:'Labor',E:'Equipment',O:'Other'};
+const REF_PCT=[0.3387,0.2022,0.6004,1.6948,4.5314,6.547,6.0477,6.1369,5.9221,5.9564,5.9856,5.9856,6.0572,6.0572,6.0572,5.7895,5.7895,5.8217,5.7298,5.3166,1.8397,1.5928];
+
+/* ---------- Templates ---------- */
+const defMks=()=>[{id:'std',name:'Standard',ocm:12,prof:8,vat:5},{id:'osh',name:'OSH (no profit, 12% VAT)',ocm:12,prof:0,vat:12},{id:'none',name:'No markup',ocm:0,prof:0,vat:0}];
+const defSc=()=>({dur:4,preset:'scurve',start:new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),pct:null});
+function tplBlank(name){
+  return{id:uid(),name:name||'Untitled project',loc:'',owner:'',notes:'',vars:[{n:'qty',label:'Quantity multiplier',v:1}],measure:{expr:'',unit:''},mks:defMks(),lib:[],items:[],sc:defSc(),prog:{}};
+}
+function tplFence(name){
+  const M=(n,q,u,r)=>({t:'M',n,u,q,r}),L=(n,q)=>({t:'L',n,u:'m-d',q,r:null});
+  const LAB={Mason:980,Laborer:755,Steelman:980,Carpenter:980,Installer:980,Painter:980};
+  const D={
+   osh:[M('Safety, first aid, PPE, warning signs, safety officer',1,'span',547.67)],
+   mob:[M('Mobilization / demobilization of equipment',1,'lot',687)],
+   exc:[L('Mason',1),L('Laborer',2)],
+   chb:[M('6" CHB',177,'pcs',20),M('Portland cement 40kg',14.5,'bags',250),M('Washed sand',1.2,'cum',1200),L('Mason',1),L('Laborer',1)],
+   plaster:[M('Portland cement 40kg',7.5,'bags',250),M('Washed sand',0.6,'cum',1200),L('Mason',1),L('Laborer',1)],
+   conc1:[M('Portland cement 40kg',13,'bags',250),M('Washed sand',0.6,'cum',1200),M('Gravel',1.2,'cum',1500),L('Mason',1),L('Laborer',1)],
+   conc2:[M('Portland cement 40kg',5,'bags',250),M('Washed sand',0.25,'cum',1200),M('Gravel',0.5,'cum',1500),L('Mason',1),L('Laborer',1)],
+   steel1:[M('16mm steel bar x 6m',6,'pcs',426),M('10mm steel bar x 6m',8,'pcs',167),M('Tie wire #16',1,'kg',75),L('Steelman',1),L('Laborer',1)],
+   steel2:[M('16mm steel bar x 6m',3,'pcs',426),M('10mm steel bar x 6m',8,'pcs',167),M('Tie wire #16',1,'kg',75),L('Steelman',1),L('Laborer',1)],
+   steel3:[M('10mm steel bar x 6m',10,'pcs',167),M('Tie wire #16',0.5,'kg',75),L('Steelman',0.5),L('Laborer',0.5)],
+   metal:[M('GI pipe 2"',0.17,'pc',2650),M('Square tube 50mm',0.17,'pc',940),M('Barbed wire',16,'m',18),M('Grinding disk 4"',1,'pc',55),M('Welding rod',0.5,'kg',120),L('Installer',1),L('Laborer',1)],
+   carp:[M('Marine plywood 1/4"',1.25,'pcs',540),M('Coco lumber 2x3x12',6,'pcs',150),M('Coco lumber 2x2x12',3,'pcs',100),M('CW nails',1,'kg',75),L('Carpenter',0.5),L('Laborer',0.5)],
+   elec:[M('1500W solar panel',1,'lot',2600),L('Installer',0.5),L('Laborer',0.5)],
+   paint1:[M('Concrete neutralizer',2,'L',150),M('Flat latex',1,'gal',680),M('Roller and pan',1,'pc',180),M('Brush, sandpaper, rugs (assorted)',1,'lot',268.75),L('Painter',0.5),L('Laborer',0.5)],
+   paint2:[M('QDE',1,'quart',150),M('Thinner, brush, rugs, sandpaper (assorted)',1,'lot',247.5),L('Painter',0.25),L('Laborer',0.25)],
+   gate:[M('Square tube 100mm',5,'pcs',1800),M('Square tube 50mm',17,'pcs',940),M('GI sheet Ga26',7,'shts',650),M('HD hinges',4,'pcs',750),M('Roller wheels',4,'pcs',450),M('Accessories',1,'lot',3000),M('Welding rod',5,'kg',120),L('Installer',6),L('Laborer',12)]
+  };
+  const lib=Object.entries(LAB).map(([n,r])=>({n,t:'L',u:'m-d',r}));
+  const seen=new Set(lib.map(l=>l.n));
+  Object.values(D).flat().forEach(l=>{if(l.t==='M'&&l.u!=='lot'&&l.u!=='span'&&!seen.has(l.n)){seen.add(l.n);lib.push({n:l.n,t:'M',u:l.u,r:l.r})}});
+  Object.values(D).flat().forEach(l=>{if(seen.has(l.n)&&l.t==='M')l.r=null});
+  const spec=[
+   ['osh','I General requirements','Occupational safety and health','span','1','osh'],
+   ['mob','II Mobilization / demobilization','Mobilization / demobilization (equipment)','span','1','none'],
+   ['exc','III Earthworks','Excavation, filling and grading, column footings (3.12 cum / bay)','bay','bays','std'],
+   ['chb','IV Masonry works','Wall CHB laying, mortar (13.6 sqm / bay)','bay','bays','std'],
+   ['plaster','IV Masonry works','Plastering (24 sqm / bay)','bay','bays','std'],
+   ['conc1','V Concrete works','Concreting, column and column footing (1.152 cum / bay)','bay','bays','std'],
+   ['conc2','V Concrete works','Concreting, beam and wall footing (0.48 cum / bay)','bay','bays','std'],
+   ['steel1','VI Steel works','Rebar, column and column footing (87.42 kg / bay)','bay','bays','std'],
+   ['steel2','VI Steel works','Rebar, beam and wall footing (103.01 kg / bay)','bay','bays','std'],
+   ['steel3','VI Steel works','Rebar, masonry wall (564 kg / bay)','bay','bays','std'],
+   ['metal','VII Metal works','GI pipe, square tube and barbed wire','bay','bays','std'],
+   ['carp','VIII Carpentry works','Forms and scaffoldings','bay','bays','std'],
+   ['elec','IX Electrical works','1500W solar panel','bay','bays','std'],
+   ['paint1','X Painting works','Painting, masonry wall (24 sqm / bay)','bay','bays','std'],
+   ['paint2','X Painting works','Painting, metal','bay','bays','std'],
+   ['gate','B Steel main gate','Metal works, steel main gate and accessories','gate','gates','std']
+  ];
+  const items=spec.map(([id,div,desc,unit,qty,mk])=>({id,div,desc,unit,qty,mk,manual:false,edc:0,lines:D[id].map(l=>({...l}))}));
+  const pt=items.find(i=>i.id==='paint1');pt.manual=true;pt.edc=2176.25;
+  return{id:uid(),name:name||'Proposed Standard Perimeter Fence for PNP Camps',loc:'Nationwide',owner:'PNP Engineering Service, Camp Crame',
+    notes:'Built from the Excel BOQ. OSH and mobilization are charged once (quantity 1). Set their quantity to "bays" to charge them per bay as filed in the Excel; with 1 bay and 1 gate the total is then 135,326.87. Painting (masonry wall): the breakdown adds up to 2,296.25 per bay but the Excel EDC is 2,176.25, so the Excel figure is entered manually. Check which is correct.',
+    vars:[{n:'bays',label:'Bays (4 m each)',v:10},{n:'gates',label:'Gates',v:1}],measure:{expr:'bays*4',unit:'m'},
+    mks:defMks(),lib,items,sc:defSc(),prog:{}};
+}
+
+/* ---------- Store ---------- */
+const KEY='estimate-workbench-v1';
+let DB=null;
+try{DB=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+if(!DB||!Array.isArray(DB.projects)||!DB.projects.length){const f=tplFence();DB={cur:f.id,projects:[f]}}
+function norm(p){
+  const b=tplBlank(p.name);
+  const o=Object.assign(b,p);
+  ['vars','mks','lib','items'].forEach(k=>{if(!Array.isArray(o[k]))o[k]=b[k]});
+  o.measure=Object.assign({expr:'',unit:''},o.measure||{});o.sc=Object.assign(defSc(),o.sc||{});o.prog=o.prog||{};
+  o.items.forEach(it=>{it.id=it.id||uid();it.lines=Array.isArray(it.lines)?it.lines:[];it.qty=it.qty==null?'1':String(it.qty);it.edc=+it.edc||0;it.mk=it.mk||(o.mks[0]&&o.mks[0].id)||'std'});
+  return o;
+}
+DB.projects=DB.projects.map(norm);
+if(!DB.projects.some(p=>p.id===DB.cur))DB.cur=DB.projects[0].id;
+const getP=()=>DB.projects.find(p=>p.id===DB.cur);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}};
+const openRows=new Set();
+let P=getP(),C=null,xfer='';
+
+/* ---------- Calculation ---------- */
+function evalExpr(e,vars){
+  e=String(e==null?'':e).trim();
+  if(e==='')return 0;
+  if(!/^[\w\s.+\-*/()]+$/.test(e))return NaN;
+  const V=Object.create(null);vars.forEach(x=>{V[x.n]=+x.v||0});
+  try{
+    const js=e.replace(/(?<![\w.])[A-Za-z_]\w*/g,m=>'V['+JSON.stringify(m)+']');
+    const r=new Function('V','return ('+js+')')(V);
+    return Number.isFinite(r)?r:NaN;
+  }catch(x){return NaN}
+}
+const libFind=(P,n)=>P.lib.find(l=>l.n===n);
+function lineRate(l,P){
+  if(l.r!==null&&l.r!==undefined&&l.r!=='')return +l.r||0;
+  const x=libFind(P,l.n);return x?+x.r||0:0;
+}
+const lineAmt=(l,P)=>(+l.q||0)*lineRate(l,P);
+function calcProject(P){
+  const C={items:[],edc:0,ocm:0,prof:0,vat:0,total:0,divs:new Map(),bad:0};
+  P.items.forEach(it=>{
+    const raw=evalExpr(it.qty,P.vars),bad=Number.isNaN(raw),q=bad?0:raw;
+    const linesSum=it.lines.reduce((a,l)=>a+lineAmt(l,P),0);
+    const ud=it.manual?(+it.edc||0):linesSum;
+    const mk=P.mks.find(m=>m.id===it.mk)||P.mks[0]||{ocm:0,prof:0,vat:0};
+    const edc=q*ud,ocm=edc*mk.ocm/100,prof=edc*mk.prof/100,vat=(edc+ocm+prof)*mk.vat/100,total=edc+ocm+prof+vat;
+    const unitTotal=ud*(1+(mk.ocm+mk.prof)/100)*(1+mk.vat/100);
+    C.items.push({it,q,bad,ud,linesSum,edc,ocm,prof,vat,total,unitTotal});
+    C.edc+=edc;C.ocm+=ocm;C.prof+=prof;C.vat+=vat;C.total+=total;if(bad)C.bad++;
+    C.divs.set(it.div||'Unassigned',(C.divs.get(it.div||'Unassigned')||0)+total);
+  });
+  C.measure=evalExpr(P.measure.expr,P.vars);
+  return C;
+}
+function resources(P,C){
+  const g={M:new Map(),L:new Map(),E:new Map(),O:new Map()};let manual=0;
+  C.items.forEach(c=>{
+    if(c.it.manual){manual+=c.edc;return}
+    c.it.lines.forEach(l=>{
+      const t=g[l.t]?l.t:'O',k=l.n+'|'+l.u,o=g[t].get(k)||{n:l.n,u:l.u,qty:0,amt:0};
+      const q=(+l.q||0)*c.q;o.qty+=q;o.amt+=q*lineRate(l,P);g[t].set(k,o);
+    });
+  });
+  return{g,manual};
+}
+
+/* ---------- Render: header, strip, KPIs ---------- */
+function renderHeader(){
+  $('projSel').innerHTML=DB.projects.map(p=>`<option value="${esc(p.id)}"${p.id===DB.cur?' selected':''}>${esc(p.name||'Untitled')}</option>`).join('');
+  $('hdrSub').textContent=[P.loc,P.owner].filter(Boolean).join(' • ')||'Detailed cost estimates, BOQ, S-curve and reports';
+  const sig=P.id+'|'+P.vars.map(v=>v.n+'/'+v.label).join(',')+'|'+P.measure.unit;
+  if($('varStrip').dataset.sig!==sig){
+    $('varStrip').dataset.sig=sig;
+    $('varStrip').innerHTML=P.vars.length?`<div class="grid">${P.vars.map((v,i)=>`<div><label class="f" for="var${i}">${esc(v.label||v.n)} <span class="small">(${esc(v.n)})</span></label><input id="var${i}" type="number" step="any" data-path="vars.${i}.v" data-kind="n" data-live="1" value="${v.v}"></div>`).join('')}</div>`:'<p class="small" style="margin:0">No variables yet. Add some in Setup to drive quantities, for example bays, floors or area.</p>';
+  }else{
+    P.vars.forEach((v,i)=>{const el=$('var'+i);if(el&&el!==document.activeElement)el.value=v.v});
+  }
+}
+function renderKpis(){
+  $('kTotal').textContent=fmt(C.total);$('kTotalSub').textContent='SAY '+fmt(Math.round(C.total/100)*100);
+  $('kEdc').textContent=fmt(C.edc);$('kEdcSub').textContent=pct(C.edc,C.total)+' of total';
+  const mk=C.total-C.edc;$('kMk').textContent=fmt(mk);$('kMkSub').textContent='OCM '+fmt(C.ocm)+' • Profit '+fmt(C.prof)+' • VAT '+fmt(C.vat);
+  const u=P.measure.unit||'unit';
+  $('kMLbl').textContent='Cost per '+u;
+  if(C.measure>0){$('kM').textContent=fmt(C.total/C.measure);$('kMSub').textContent=num(C.measure,2)+' '+u+' • all-in'}
+  else{$('kM').textContent='—';$('kMSub').textContent='Set a measure in Setup, for example bays*4'}
+}
+
+/* ---------- Tab: overview ---------- */
+function tabOverview(){
+  if(!P.items.length){$('tab-overview').innerHTML='<div class="card empty"><b>No items yet.</b><br>Open the Estimate tab to add items, or paste rows from a spreadsheet.</div>';return}
+  const mx=Math.max(...C.divs.values(),1);
+  const bars=[...C.divs].map(([k,v])=>`<div class="r"><div class="lbl">${esc(k)}</div><div class="bar"><i style="width:${v/mx*100}%"></i></div><div class="n">${fmt(v)} • ${pct(v,C.total)}</div></div>`).join('');
+  const R=resources(P,C);
+  const typ=Object.keys(TYPES).map(t=>[TYPES[t],[...R.g[t].values()].reduce((a,o)=>a+o.amt,0)]);
+  if(R.manual)typ.push(['Manual direct costs',R.manual]);
+  const row=(a,v,b)=>`<tr${b?' class="sub"':''}><td>${a}</td><td class="n">${fmt(v)}</td><td class="n">${b?'':pct(v,C.total)}</td></tr>`;
+  const top=[...C.items].sort((a,b)=>b.total-a.total).slice(0,6);
+  $('tab-overview').innerHTML=`${C.bad?`<p class="note">${C.bad} item${C.bad>1?'s have':' has'} a quantity formula that could not be read and counts as 0. Check the Estimate tab.</p>`:''}
+  <div class="card bars"><h2>Cost by division</h2>${bars}</div>
+  <div class="grid grid2" style="margin-bottom:14px">
+    <div class="card" style="margin:0"><h2>EDC, markups and VAT</h2><div class="scroll"><table><thead><tr><th>Component</th><th class="n">Amount</th><th class="n">Share</th></tr></thead><tbody>${row('Direct cost (EDC)',C.edc)}${row('OCM',C.ocm)}${row('Profit',C.prof)}${row('VAT',C.vat)}${row('Total project cost',C.total,1)}</tbody></table></div></div>
+    <div class="card" style="margin:0"><h2>Direct cost by resource type</h2><div class="scroll"><table><thead><tr><th>Type</th><th class="n">Amount</th><th class="n">Share of EDC</th></tr></thead><tbody>${typ.map(([a,v])=>`<tr><td>${a}</td><td class="n">${fmt(v)}</td><td class="n">${pct(v,C.edc)}</td></tr>`).join('')}</tbody></table></div></div>
+  </div>
+  <div class="card"><h2>Largest items</h2><div class="scroll"><table><thead><tr><th>Item</th><th class="n">Qty</th><th>Unit</th><th class="n">Total (₱)</th><th class="n">Share</th></tr></thead><tbody>${top.map(c=>`<tr><td>${esc(c.it.desc)}</td><td class="n">${num(c.q)}</td><td>${esc(c.it.unit)}</td><td class="n">${num(c.total)}</td><td class="n">${pct(c.total,C.total)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+/* ---------- Tab: setup ---------- */
+function tabSetup(){
+  const used=id=>P.items.some(i=>i.mk===id);
+  $('tab-setup').innerHTML=`
+  <div class="card"><h2>Project details</h2><div class="grid grid2">
+    <div><label class="f" for="s_name">Project name</label><input id="s_name" type="text" data-path="name" data-kind="s" value="${esc(P.name)}"></div>
+    <div><label class="f" for="s_loc">Location</label><input id="s_loc" type="text" data-path="loc" data-kind="s" value="${esc(P.loc)}"></div>
+    <div><label class="f" for="s_owner">Owner / prepared by</label><input id="s_owner" type="text" data-path="owner" data-kind="s" value="${esc(P.owner)}"></div>
+    <div><label class="f" for="s_notes">Notes</label><textarea id="s_notes" style="min-height:60px" data-path="notes" data-kind="s">${esc(P.notes)}</textarea></div>
+  </div></div>
+  <div class="card"><div class="row"><h2 style="margin:0">Variables</h2><button class="btn" type="button" data-act="addVar">Add variable</button></div>
+    <p class="small">Variables drive quantities. In the Estimate tab, an item quantity can be a number or a formula such as <code>bays*2</code> or <code>(length*height)/0.18</code>. Names use letters, digits and underscores. Renaming a variable does not rewrite formulas that use it.</p>
+    <div class="scroll"><table style="min-width:520px"><thead><tr><th>Name</th><th>Label</th><th class="n">Value</th><th></th></tr></thead><tbody>${P.vars.map((v,i)=>`<tr><td><input class="u" style="width:140px" type="text" aria-label="Variable name" data-path="vars.${i}.n" data-kind="v" value="${esc(v.n)}"></td><td><input class="w" type="text" aria-label="Variable label" data-path="vars.${i}.label" data-kind="s" value="${esc(v.label)}"></td><td class="n"><input class="q" type="number" step="any" aria-label="Variable value" data-path="vars.${i}.v" data-kind="n" value="${v.v}"></td><td><button class="x" type="button" data-act="delVar" data-i="${i}" aria-label="Remove variable">✕</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="grid grid3" style="margin-top:14px"><div><label class="f" for="s_mexpr">Measure formula (for cost per unit of length, area, etc.)</label><input id="s_mexpr" type="text" data-path="measure.expr" data-kind="s" value="${esc(P.measure.expr)}" placeholder="e.g. bays*4"></div><div><label class="f" for="s_munit">Measure unit</label><input id="s_munit" type="text" data-path="measure.unit" data-kind="s" value="${esc(P.measure.unit)}" placeholder="e.g. m, sqm"></div></div>
+  </div>
+  <div class="card"><div class="row"><h2 style="margin:0">Markup profiles</h2><button class="btn" type="button" data-act="addMk">Add profile</button></div>
+    <p class="small">Each item uses one profile. Item cost = EDC × (1 + OCM% + Profit%) × (1 + VAT%). Use a profile with 0% profit for items that carry none, or 0% for all to leave an item unmarked.</p>
+    <div class="scroll"><table style="min-width:520px"><thead><tr><th>Profile</th><th class="n">OCM %</th><th class="n">Profit %</th><th class="n">VAT %</th><th></th></tr></thead><tbody>${P.mks.map((m,i)=>`<tr><td><input class="w" type="text" aria-label="Profile name" data-path="mks.${i}.name" data-kind="s" value="${esc(m.name)}"></td><td class="n"><input class="q" type="number" step="any" aria-label="OCM percent" data-path="mks.${i}.ocm" data-kind="n" value="${m.ocm}"></td><td class="n"><input class="q" type="number" step="any" aria-label="Profit percent" data-path="mks.${i}.prof" data-kind="n" value="${m.prof}"></td><td class="n"><input class="q" type="number" step="any" aria-label="VAT percent" data-path="mks.${i}.vat" data-kind="n" value="${m.vat}"></td><td>${used(m.id)||P.mks.length<2?'':`<button class="x" type="button" data-act="delMk" data-i="${i}" aria-label="Remove profile">✕</button>`}</td></tr>`).join('')}</tbody></table></div>
+  </div>
+  <div class="card"><h2>Back up, share and import</h2>
+    <p class="small">Projects are stored in this browser. Copy the project as JSON to back it up or move it to another device or app, then paste it below and import. You can also copy the BOQ as CSV for a spreadsheet.</p>
+    <div class="row" style="justify-content:flex-start;margin-bottom:10px"><button class="btn" type="button" data-act="copyJson">Copy project JSON</button><button class="btn light" type="button" data-act="copyCsv">Copy BOQ as CSV</button><button class="btn light" type="button" data-act="importJson">Import pasted JSON as new project</button></div>
+    <textarea id="xferText" aria-label="Project JSON or CSV" placeholder="Paste project JSON here to import. Copied text also appears here when the clipboard is blocked.">${esc(xfer)}</textarea>
+  </div>`;
+}
+
+/* ---------- Tab: estimate ---------- */
+function lineTable(it,i,c){
+  const rows=it.lines.map((l,j)=>{
+    const lib=libFind(P,l.n),rate=lineRate(l,P),p=`items.${i}.lines.${j}`;
+    return`<tr><td><select aria-label="Type" data-path="${p}.t" data-kind="s">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}"${l.t===k?' selected':''}>${v}</option>`).join('')}</select></td>
+    <td><input class="w" type="text" list="libNames" aria-label="Resource" data-fk="${it.id}.${j}.n" data-path="${p}.n" data-kind="s" value="${esc(l.n)}"></td>
+    <td><input class="u" type="text" aria-label="Unit" data-fk="${it.id}.${j}.u" data-path="${p}.u" data-kind="s" value="${esc(l.u)}"></td>
+    <td class="n"><input class="q" type="number" step="any" aria-label="Quantity per item unit" data-fk="${it.id}.${j}.q" data-path="${p}.q" data-kind="n" value="${l.q}"></td>
+    <td class="n"><input class="q" type="number" step="any" aria-label="Rate override" placeholder="${lib?num(lib.r):'rate'}" data-fk="${it.id}.${j}.r" data-path="${p}.r" data-kind="nn" value="${l.r==null?'':l.r}"></td>
+    <td class="n">${num((+l.q||0)*rate)}</td><td><button class="x" type="button" data-act="delLine" data-i="${i}" data-j="${j}" aria-label="Remove line">✕</button></td></tr>`}).join('');
+  return`<div class="scroll"><table style="min-width:660px"><thead><tr><th>Type</th><th>Resource</th><th>Unit</th><th class="n">Qty per ${esc(it.unit||'item')}</th><th class="n">Rate (₱)</th><th class="n">Amount (₱)</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="small">No lines yet. Add materials, labor or equipment, or switch to a manual direct cost.</td></tr>'}</tbody>${it.lines.length?`<tfoot><tr class="sub"><td colspan="5">Direct cost per ${esc(it.unit||'item')}</td><td class="n">${num(c.linesSum)}</td><td></td></tr></tfoot>`:''}</table></div>
+  <div style="margin-top:8px"><button class="btn light" type="button" data-act="addLine" data-i="${i}">Add line</button></div><p class="small" style="margin:8px 0 0">Leave Rate empty to use the price from the Rates tab. Type a rate to override it for this line only.</p>`;
+}
+function tabEstimate(){
+  let body='',prevDiv=null,blockTotal=0,blockFirst=true;
+  const closeBlock=()=>{if(prevDiv!==null)body+=`<tr class="sub"><td colspan="8">Subtotal: ${esc(prevDiv||'Unassigned')}</td><td class="n">${num(blockTotal)}</td><td></td></tr>`};
+  C.items.forEach((c,i)=>{
+    const it=c.it,d=it.div||'';
+    if(d!==prevDiv){if(!blockFirst)closeBlock();blockTotal=0;prevDiv=d;blockFirst=false}
+    blockTotal+=c.total;
+    const open=openRows.has(it.id),p='items.'+i;
+    body+=`<tr><td><button class="x" type="button" data-act="toggle" data-id="${it.id}" aria-expanded="${open}" aria-label="Toggle breakdown">${open?'▾':'▸'}</button></td>
+     <td style="min-width:260px"><input class="t" type="text" aria-label="Division" data-fk="${it.id}.div" data-path="${p}.div" data-kind="s" value="${esc(it.div)}" placeholder="Division"><input class="w" type="text" aria-label="Description" data-fk="${it.id}.desc" data-path="${p}.desc" data-kind="s" value="${esc(it.desc)}"></td>
+     <td><input class="u" type="text" aria-label="Unit" data-fk="${it.id}.unit" data-path="${p}.unit" data-kind="s" value="${esc(it.unit)}"></td>
+     <td><input class="q" type="text" style="${c.bad?'border-color:var(--bad)':''}" aria-label="Quantity or formula" data-fk="${it.id}.qty" data-path="${p}.qty" data-kind="s" value="${esc(it.qty)}"><div class="small n" style="text-align:left">${c.bad?'<span class="err">formula error</span>':'= '+num(c.q,3)}</div></td>
+     <td><select aria-label="Markup profile" data-path="${p}.mk" data-kind="s">${P.mks.map(m=>`<option value="${esc(m.id)}"${m.id===it.mk?' selected':''}>${esc(m.name)}</option>`).join('')}</select></td>
+     <td class="n">${num(c.ud)}${it.manual?'<div class="small">manual</div>':''}</td><td class="n">${num(c.unitTotal)}</td><td class="n">${num(c.total)}</td>
+     <td style="white-space:nowrap"><button class="x" type="button" data-act="move" data-i="${i}" data-d="-1" aria-label="Move up">↑</button> <button class="x" type="button" data-act="move" data-i="${i}" data-d="1" aria-label="Move down">↓</button> <button class="x" type="button" data-act="delItem" data-i="${i}" aria-label="Remove item">✕</button></td></tr>`;
+    if(open){
+      const diff=it.manual&&it.lines.length&&Math.abs(c.linesSum-it.edc)>0.005;
+      body+=`<tr class="detail"><td colspan="10">
+       <label class="chk"><input type="checkbox" data-path="${p}.manual" data-kind="b"${it.manual?' checked':''}> Enter the direct cost per ${esc(it.unit||'item')} manually</label>
+       ${it.manual?`<div style="margin:10px 0;max-width:300px"><label class="f" for="edc_${it.id}">Direct cost per ${esc(it.unit||'item')} (₱)</label><input id="edc_${it.id}" type="number" step="any" data-fk="${it.id}.edc" data-path="${p}.edc" data-kind="n" value="${it.edc}"></div>${diff?`<p class="note">The lines below add up to ${fmt(c.linesSum)} but the manual cost is ${fmt(it.edc)} (difference ${fmt(c.linesSum-it.edc)}). The manual cost is used.</p>`:''}`:''}
+       <div style="margin-top:10px">${lineTable(it,i,c)}</div></td></tr>`;
+    }
+  });
+  if(!blockFirst)closeBlock();
+  $('tab-estimate').innerHTML=`<div class="card">
+   <div class="row"><h2 style="margin:0">Estimate</h2><div><button class="btn" type="button" data-act="addItem">Add item</button></div></div>
+   <p class="small">Quantity can be a number or a formula using your variables. Expand an item (▸) to build up its direct cost from materials, labor and equipment lines. Unit cost includes OCM, profit and VAT.</p>
+   ${P.items.length?`<div class="scroll"><table style="min-width:980px"><thead><tr><th></th><th>Division / item</th><th>Unit</th><th>Quantity</th><th>Markup</th><th class="n">Direct / unit</th><th class="n">Unit cost</th><th class="n">Total (₱)</th><th></th><th></th></tr></thead><tbody>${body}</tbody><tfoot><tr class="sub"><td colspan="7">Total project cost</td><td class="n">${num(C.total)}</td><td colspan="2"></td></tr></tfoot></table></div>`:'<div class="empty">No items yet. Add one, or paste rows below.</div>'}
+  </div>
+  <div class="card"><h2>Paste rows from a spreadsheet</h2><p class="small">One item per line with columns: division, description, unit, quantity, direct cost per unit. Copy straight from Excel (tab separated) or use commas. A header row is skipped. Items are added with a manual direct cost, and you can add breakdown lines later.</p><textarea id="pasteBox" aria-label="Rows to paste" placeholder="Earthworks&#9;Excavation&#9;cum&#9;120&#9;450"></textarea><div style="margin-top:8px"><button class="btn" type="button" data-act="addRows">Add rows</button></div></div>`;
+}
+
+/* ---------- Tab: rates ---------- */
+function tabRates(){
+  const cnt=n=>P.items.reduce((a,it)=>a+it.lines.filter(l=>l.n===n&&(l.r==null||l.r==='')).length,0);
+  $('tab-rates').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">Rate library</h2><button class="btn" type="button" data-act="addLib">Add rate</button></div>
+  <p class="small">Prices for materials, labor and equipment. Lines with an empty rate use these, so changing a price here updates every estimate line that uses it.</p>
+  ${P.lib.length?`<div class="scroll"><table style="min-width:620px"><thead><tr><th>Type</th><th>Name</th><th>Unit</th><th class="n">Rate (₱)</th><th class="n">Lines using it</th><th></th></tr></thead><tbody>${P.lib.map((l,i)=>`<tr><td><select aria-label="Type" data-path="lib.${i}.t" data-kind="s">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}"${l.t===k?' selected':''}>${v}</option>`).join('')}</select></td><td><input class="w" type="text" aria-label="Name" data-fk="lib.${i}.n" data-path="lib.${i}.n" data-kind="s" value="${esc(l.n)}"></td><td><input class="u" type="text" aria-label="Unit" data-path="lib.${i}.u" data-kind="s" value="${esc(l.u)}"></td><td class="n"><input class="q" type="number" step="any" aria-label="Rate" data-fk="lib.${i}.r" data-path="lib.${i}.r" data-kind="n" value="${l.r}"></td><td class="n">${cnt(l.n)}</td><td><button class="x" type="button" data-act="delLib" data-i="${i}" aria-label="Remove rate">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No rates yet. Add the prices you use most.</div>'}</div>`;
+}
+
+/* ---------- Tab: materials and labor ---------- */
+function tabTakeoff(){
+  const R=resources(P,C);let direct=0,html='';
+  Object.keys(TYPES).forEach(t=>{
+    const list=[...R.g[t].values()].sort((a,b)=>b.amt-a.amt);if(!list.length)return;
+    const sum=list.reduce((a,o)=>a+o.amt,0);direct+=sum;
+    html+=`<div class="card"><h2>${TYPES[t]}</h2><div class="scroll"><table style="min-width:560px"><thead><tr><th>Resource</th><th>Unit</th><th class="n">Total qty</th><th class="n">Avg rate (₱)</th><th class="n">Amount (₱)</th></tr></thead><tbody>${list.map(o=>`<tr><td>${esc(o.n)}</td><td>${esc(o.u)}</td><td class="n">${num(o.qty,2)}</td><td class="n">${num(o.qty?o.amt/o.qty:0)}</td><td class="n">${num(o.amt)}</td></tr>`).join('')}</tbody><tfoot><tr class="sub"><td colspan="4">${TYPES[t]} at cost</td><td class="n">${num(sum)}</td></tr></tfoot></table></div></div>`;
+  });
+  if(R.manual){direct+=R.manual;html+=`<div class="card"><h2>Manual direct costs</h2><p class="small">Items with a manually entered direct cost have no resource breakdown.</p><p class="n" style="text-align:left"><b>${fmt(R.manual)}</b></p></div>`}
+  $('tab-takeoff').innerHTML=(html||'<div class="card empty">Add breakdown lines to items in the Estimate tab to see consolidated quantities here.</div>')+`<p class="small">Resources plus manual costs = ${fmt(direct)}, against ${fmt(C.edc)} EDC. Amounts are at cost, before OCM, profit and VAT.</p>`;
+}
+
+/* ---------- S-curve ---------- */
+function genPct(d,preset){
+  if(preset==='ref'){return REF_PCT.slice()}
+  const raw=[];for(let i=0;i<d;i++)raw.push(preset==='even'?1:preset==='front'?d-i:preset==='back'?i+1:Math.sin(Math.PI*(i+.5)/d));
+  const s=raw.reduce((a,b)=>a+b,0);return raw.map(x=>x/s*100);
+}
+function monthLabel(i){
+  const m=/^(\d{4})-(\d{2})$/.exec(P.sc.start||'');
+  if(!m)return'Month '+(i+1);
+  return new Date(+m[1],+m[2]-1+i,1).toLocaleString('en-PH',{month:'short',year:'numeric'});
+}
+function scChart(pcts,labelFn){
+  const W=640,H=240,ml=38,mr=40,mt=14,mb=30,pw=W-ml-mr,ph=H-mt-mb,n=pcts.length;
+  const mxv=Math.max(...pcts,1),step=mxv<=2?.5:mxv<=5?1:mxv<=10?2:5,top=Math.ceil(mxv/step/4)*step*4;
+  const bw=pw/n,cum=[];pcts.reduce((a,v,i)=>(cum[i]=a+v),0);
+  let g='',b='',x='';
+  for(let k=0;k<=4;k++){const y=mt+ph-ph*k/4;
+    g+=`<line x1="${ml}" x2="${W-mr}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${ml-5}" y="${y+3}" text-anchor="end">${+(top*k/4).toFixed(1)}%</text><text x="${W-mr+5}" y="${y+3}">${25*k}%</text>`}
+  pcts.forEach((v,i)=>{const h=ph*Math.min(v,top)/top;b+=`<rect x="${ml+i*bw+bw*.15}" y="${mt+ph-h}" width="${bw*.7}" height="${h}" fill="var(--bar)"><title>${esc(labelFn(i))}: ${v.toFixed(2)}%</title></rect>`});
+  const every=Math.ceil(n/11);
+  for(let i=0;i<n;i+=every)x+=`<text x="${ml+i*bw+bw/2}" y="${H-12}" text-anchor="middle">${esc(n>12?String(i+1):labelFn(i))}</text>`;
+  const pts=cum.map((v,i)=>`${ml+i*bw+bw/2},${mt+ph-ph*Math.min(v,100)/100}`).join(' ');
+  return`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Monthly percentage bars with a cumulative S-curve line">${g}${b}<polyline points="${pts}" fill="none" stroke="var(--gold-line)" stroke-width="2.5"/>${x}<text x="${ml}" y="9">Monthly %</text><text x="${W-mr}" y="9" text-anchor="end">Cumulative % (line)</text></svg>`;
+}
+function ensurePct(){if(!P.sc.pct||P.sc.pct.length!==(P.sc.preset==='ref'?REF_PCT.length:P.sc.dur))P.sc.pct=genPct(P.sc.dur,P.sc.preset)}
+function tabScurve(){
+  ensurePct();let cum=0;const pc=P.sc.pct,sum=pc.reduce((a,b)=>a+b,0),pk=pc.indexOf(Math.max(...pc));
+  $('tab-scurve').innerHTML=`<div class="card"><h2>S-curve and payment schedule</h2>
+  <div class="grid" style="margin-bottom:12px">
+   <div><label class="f" for="sc_dur">Duration (months)</label><input id="sc_dur" type="number" min="1" max="60" step="1" data-path="sc.dur" data-kind="n" value="${P.sc.dur}"></div>
+   <div><label class="f" for="sc_preset">Shape</label><select id="sc_preset" data-path="sc.preset" data-kind="s"><option value="scurve">Standard S-curve</option><option value="even">Even</option><option value="front">Front-loaded</option><option value="back">Back-loaded</option><option value="ref">Large building reference (22 months)</option></select></div>
+   <div><label class="f" for="sc_start">Start month</label><input id="sc_start" type="month" data-path="sc.start" data-kind="s" value="${esc(P.sc.start)}"></div>
+   <div style="align-self:end"><button class="btn light" type="button" data-act="normalize" style="width:100%">Normalize to 100%</button></div>
+  </div>
+  ${scChart(pc,monthLabel)}
+  <div class="scroll"><table style="min-width:520px"><thead><tr><th>Month</th><th class="n">Monthly % (editable)</th><th class="n">Monthly amount</th><th class="n">Cumulative %</th><th class="n">Cumulative amount</th></tr></thead><tbody>${pc.map((v,i)=>{cum+=v;return`<tr><td>${esc(monthLabel(i))}</td><td class="n"><input class="q" type="number" step="any" aria-label="Monthly percent ${i+1}" data-fk="sc.${i}" data-path="sc.pct.${i}" data-kind="n" value="${+v.toFixed(2)}"></td><td class="n">${num(C.total*v/100)}</td><td class="n">${cum.toFixed(2)}%</td><td class="n">${num(C.total*cum/100)}</td></tr>`}).join('')}</tbody></table></div>
+  <p class="small">${Math.abs(sum-100)>0.05?'<span class="pill warn">Total '+sum.toFixed(2)+'%: must be 100%</span>':'<span class="pill ok">Totals 100%</span>'} Peak month: ${esc(monthLabel(pk))} • Contract value: ${fmt(C.total)}</p></div>`;
+  $('sc_preset').value=P.sc.preset;
+}
+
+/* ---------- Progress ---------- */
+function tabProgress(){
+  if(!P.items.length){$('tab-progress').innerHTML='<div class="card empty">Add items in the Estimate tab to track progress.</div>';return}
+  let earned=0;
+  const rows=C.items.map(c=>{const pc=Math.max(0,Math.min(100,+P.prog[c.it.id]||0)),e=c.total*pc/100;earned+=e;return`<tr><td>${esc(c.it.div)}</td><td>${esc(c.it.desc)}</td><td class="n">${num(c.total)}</td><td class="n"><input class="q" type="number" min="0" max="100" step="any" aria-label="Percent complete: ${esc(c.it.desc)}" data-fk="prog.${c.it.id}" data-path="prog.${c.it.id}" data-kind="n" value="${pc}"></td><td class="n">${num(e)}</td></tr>`}).join('');
+  const w=C.total?earned/C.total*100:0;
+  $('tab-progress').innerHTML=`<div class="card"><h2>Physical progress, weighted by cost</h2><div class="bar" style="height:16px;margin-bottom:6px"><i style="width:${w}%"></i></div><p><b>${w.toFixed(1)}% complete</b> • Earned value ${fmt(earned)} of ${fmt(C.total)}</p>
+  <div class="scroll"><table style="min-width:640px"><thead><tr><th>Division</th><th>Item</th><th class="n">Amount (₱)</th><th class="n">% complete</th><th class="n">Earned (₱)</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+/* ---------- Report (print preview) ---------- */
+let repUcs=true;
+function tabReport(){
+  const date=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+  ensurePct();
+  let prev=null,boq='';
+  C.items.forEach(c=>{
+    if((c.it.div||'')!==prev){prev=c.it.div||'';boq+=`<tr class="div"><td colspan="7">${esc(prev||'Unassigned')}</td></tr>`}
+    boq+=`<tr><td>${esc(c.it.desc)}</td><td>${esc(c.it.unit)}</td><td class="n">${num(c.q,3)}</td><td class="n">${num(c.unitTotal)}</td><td class="n">${num(c.edc)}</td><td class="n">${num(c.total)}</td></tr>`;
+  });
+  const R=resources(P,C);
+  const res=Object.keys(TYPES).map(t=>{const l=[...R.g[t].values()];if(!l.length)return'';return`<tr class="div"><td colspan="5">${TYPES[t]}</td></tr>`+l.map(o=>`<tr><td>${esc(o.n)}</td><td>${esc(o.u)}</td><td class="n">${num(o.qty)}</td><td class="n">${num(o.qty?o.amt/o.qty:0)}</td><td class="n">${num(o.amt)}</td></tr>`).join('')}).join('')+(R.manual?`<tr class="div"><td colspan="4">Manual direct costs</td><td class="n">${num(R.manual)}</td></tr>`:'');
+  const ucs=repUcs?C.items.filter(c=>!c.it.manual&&c.it.lines.length).map(c=>`<p style="margin:10px 0 3px"><b>${esc(c.it.desc)}</b> <span class="small">per ${esc(c.it.unit)}</span></p><table><thead><tr><th>Type</th><th>Resource</th><th>Unit</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead><tbody>${c.it.lines.map(l=>`<tr><td>${TYPES[l.t]||'Other'}</td><td>${esc(l.n)}</td><td>${esc(l.u)}</td><td class="n">${num(l.q,3)}</td><td class="n">${num(lineRate(l,P))}</td><td class="n">${num(lineAmt(l,P))}</td></tr>`).join('')}<tr class="sub"><td colspan="5">Direct cost</td><td class="n">${num(c.linesSum)}</td></tr></tbody></table>`).join(''):'';
+  let cum=0;
+  const sc=P.sc.pct.map((v,i)=>{cum+=v;return`<tr><td>${esc(monthLabel(i))}</td><td class="n">${v.toFixed(2)}%</td><td class="n">${num(C.total*v/100)}</td><td class="n">${cum.toFixed(2)}%</td><td class="n">${num(C.total*cum/100)}</td></tr>`}).join('');
+  const sum=(a,v,b)=>`<tr${b?' class="sub"':''}><td>${a}</td><td class="n">${num(v)}</td></tr>`;
+  $('tab-report').innerHTML=`<div class="card noprint row"><div><h2 style="margin:0 0 4px">Report preview</h2><p class="small" style="margin:0">A4 report of the current estimate. Printing is blocked in some viewers, including the published artifact page. Open the HTML file directly, or run it inside your app, to print or save as PDF.</p></div><div><label class="chk" style="margin-bottom:8px"><input type="checkbox" id="repUcs" data-act="toggleUcs"${repUcs?' checked':''}> Include unit cost analysis</label><button class="btn" type="button" data-act="print">Print / Save as PDF</button></div></div>
+  <article class="paper"><h1>${esc(P.name||'Project')}</h1><div class="small">Detailed cost estimate and bill of quantities • ${esc([P.loc,P.owner].filter(Boolean).join(' • '))} • ${esc(date)}</div>
+  <div class="meta">${P.vars.map(v=>`<div><b>${esc(v.label||v.n)}:</b> ${num(v.v,v.v%1?2:0)}</div>`).join('')}${C.measure>0?`<div><b>Measure:</b> ${num(C.measure)} ${esc(P.measure.unit)}</div>`:''}<div><b>Markups:</b> ${P.mks.map(m=>esc(m.name)+' '+m.ocm+'/'+m.prof+'/'+m.vat+'%').join('; ')}</div></div>
+  ${P.notes?`<p class="small">${esc(P.notes)}</p>`:''}
+  <h2>1. Bill of quantities</h2><table><thead><tr><th>Item</th><th>Unit</th><th class="n">Qty</th><th class="n">Unit cost (₱)</th><th class="n">EDC (₱)</th><th class="n">Total (₱)</th></tr></thead><tbody>${boq}<tr class="sub"><td colspan="5">Total project cost</td><td class="n">${num(C.total)}</td></tr></tbody></table>
+  <h2>2. Cost summary</h2><table style="max-width:440px"><tbody>${sum('Direct cost (EDC)',C.edc)}${sum('OCM',C.ocm)}${sum('Profit',C.prof)}${sum('VAT',C.vat)}${sum('Total project cost',C.total,1)}${sum('SAY (nearest ₱100)',Math.round(C.total/100)*100,1)}${C.measure>0?sum('Cost per '+esc(P.measure.unit||'unit'),C.total/C.measure):''}</tbody></table>
+  <h2>3. Materials, labor and equipment</h2><table><thead><tr><th>Resource</th><th>Unit</th><th class="n">Total qty</th><th class="n">Avg rate (₱)</th><th class="n">Amount (₱)</th></tr></thead><tbody>${res||'<tr><td colspan="5">No breakdown lines.</td></tr>'}</tbody></table>
+  ${ucs?`<h2>4. Unit cost analysis</h2>${ucs}`:''}
+  <h2>${ucs?'5':'4'}. Schedule of payments (S-curve)</h2><table><thead><tr><th>Month</th><th class="n">Monthly %</th><th class="n">Monthly amount (₱)</th><th class="n">Cumulative %</th><th class="n">Cumulative amount (₱)</th></tr></thead><tbody>${sc}</tbody></table>
+  <div class="sign"><div>Prepared by</div><div>Checked by</div><div>Approved by</div></div></article>`;
+}
+
+/* ---------- Render driver ---------- */
+const TABS=['overview','setup','estimate','rates','takeoff','scurve','progress','report'];
+const RENDER={overview:tabOverview,setup:tabSetup,estimate:tabEstimate,rates:tabRates,takeoff:tabTakeoff,scurve:tabScurve,progress:tabProgress,report:tabReport};
+const curTab=()=>{const h=location.hash.slice(1);return TABS.includes(h)?h:'overview'};
+function render(){
+  const a=document.activeElement,fk=a&&a.dataset&&a.dataset.fk,id=a&&a.id;
+  P=getP();C=calcProject(P);
+  $('libNames').innerHTML=P.lib.map(l=>`<option value="${esc(l.n)}">`).join('');
+  renderHeader();renderKpis();
+  const t=curTab();
+  TABS.forEach(k=>{$('tab-'+k).hidden=k!==t});
+  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.t===t)));
+  const keep={};  // keep the textarea contents when the tab re-renders
+  const ta=$('xferText');if(ta)xfer=ta.value;
+  RENDER[t]();
+  let el=null;
+  if(fk)el=document.querySelector('[data-fk="'+CSS.escape(fk)+'"]');else if(id&&id!=='projSel')el=$(id);
+  if(el&&el!==a){el.focus();try{if(el.select&&el.type!=='month'&&el.type!=='number')el.select()}catch(e){}}
+  save();
+}
+const later=()=>setTimeout(render,0);
+
+/* ---------- Events ---------- */
+function setPath(t){
+  const keys=t.dataset.path.split('.');let o=P;
+  for(let i=0;i<keys.length-1;i++){o=o[keys[i]];if(o==null)return}
+  const k=keys[keys.length-1],kind=t.dataset.kind;let v=t.value;
+  if(kind==='n')v=+v||0;
+  else if(kind==='nn')v=v.trim()===''?null:(+v||0);
+  else if(kind==='b')v=t.checked;
+  else if(kind==='v'){v=v.trim().replace(/\W/g,'_');if(!v||/^\d/.test(v))v='v_'+v}
+  o[k]=v;
+  const path=t.dataset.path;
+  if(/\.lines\.\d+\.n$/.test(path)){const l=libFind(P,v);if(l){o.t=l.t;o.u=l.u}}
+  if(path==='sc.dur'){P.sc.dur=Math.max(1,Math.min(60,Math.round(v)||4));P.sc.pct=null}
+  if(path==='sc.preset'){if(v==='ref')P.sc.dur=REF_PCT.length;P.sc.pct=null}
+}
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.live&&t.dataset.path){setPath(t);render()}});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='projSel'){DB.cur=t.value;openRows.clear();xfer='';later();return}
+  if(t.id==='repUcs'){repUcs=t.checked;later();return}
+  if(t.dataset&&t.dataset.path&&!t.dataset.live){setPath(t);later()}
+});
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),2400)}
+async function copyOut(text,label){
+  xfer=text;
+  try{await navigator.clipboard.writeText(text);toast(label+' copied')}
+  catch(e){toast('Clipboard blocked. Text is in the box below, select and copy it.')}
+  render();
+}
+function csv(){
+  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  return['Division,Item,Unit,Quantity,Direct cost per unit,Unit cost,EDC,Total',...C.items.map(c=>[q(c.it.div),q(c.it.desc),q(c.it.unit),c.q,c.ud.toFixed(2),c.unitTotal.toFixed(2),c.edc.toFixed(2),c.total.toFixed(2)].join(',')),`TOTAL,,,,,,${C.edc.toFixed(2)},${C.total.toFixed(2)}`].join('\n');
+}
+let delArmed=false,delT;
+const ACTS={
+  newProj(){$('newBox').hidden=false;$('newName').focus()},
+  cancelNew(){$('newBox').hidden=true},
+  createProj(){const name=$('newName').value.trim()||'Untitled project',p=$('newTpl').value==='fence'?tplFence(name):tplBlank(name);DB.projects.push(p);DB.cur=p.id;$('newBox').hidden=true;location.hash=p.items.length?'overview':'estimate';toast('Project created')},
+  dupProj(){const c=JSON.parse(JSON.stringify(P));c.id=uid();c.name=P.name+' (copy)';DB.projects.push(c);DB.cur=c.id;toast('Project duplicated')},
+  delProj(){
+    const b=$('delProjBtn');
+    if(!delArmed){delArmed=true;b.textContent='Confirm delete';clearTimeout(delT);delT=setTimeout(()=>{delArmed=false;b.textContent='Delete'},4000);return}
+    delArmed=false;b.textContent='Delete';
+    DB.projects=DB.projects.filter(p=>p.id!==DB.cur);
+    if(!DB.projects.length)DB.projects.push(tplBlank());
+    DB.cur=DB.projects[0].id;toast('Project deleted');
+  },
+  addVar(){P.vars.push({n:'var'+(P.vars.length+1),label:'New variable',v:1})},
+  delVar(i){P.vars.splice(i,1)},
+  addMk(){P.mks.push({id:uid(),name:'New profile',ocm:0,prof:0,vat:0})},
+  delMk(i){P.mks.splice(i,1)},
+  addItem(){const first=P.items[P.items.length-1];const it={id:uid(),div:first?first.div:'',desc:'New item',unit:'lot',qty:'1',mk:P.mks[0]?P.mks[0].id:'std',manual:false,edc:0,lines:[]};P.items.push(it);openRows.add(it.id)},
+  delItem(i){P.items.splice(i,1)},
+  move(i,j,b){const d=+b.dataset.d,k=i+d;if(k<0||k>=P.items.length)return;[P.items[i],P.items[k]]=[P.items[k],P.items[i]]},
+  toggle(i,j,b){const id=b.dataset.id;openRows.has(id)?openRows.delete(id):openRows.add(id)},
+  addLine(i){P.items[i].lines.push({t:'M',n:'',u:'',q:1,r:null})},
+  delLine(i,j){P.items[i].lines.splice(j,1)},
+  addLib(){P.lib.push({n:'New resource',t:'M',u:'pc',r:0})},
+  delLib(i){P.lib.splice(i,1)},
+  normalize(){ensurePct();const s=P.sc.pct.reduce((a,b)=>a+b,0);if(s>0)P.sc.pct=P.sc.pct.map(v=>v/s*100);toast('Monthly percentages now total 100%')},
+  copyJson(){copyOut(JSON.stringify(P,null,1),'Project JSON');return 1},
+  copyCsv(){copyOut(csv(),'BOQ CSV');return 1},
+  importJson(){
+    try{const o=JSON.parse($('xferText').value);if(!o||!Array.isArray(o.items))throw 0;const p=norm(o);p.id=uid();DB.projects.push(p);DB.cur=p.id;xfer='';toast('Project imported')}
+    catch(e){toast('That is not valid project JSON.');return 1}
+  },
+  addRows(){
+    const txt=$('pasteBox').value;let n=0;
+    txt.split(/\r?\n/).forEach(line=>{
+      if(!line.trim())return;
+      const c=(line.includes('\t')?line.split('\t'):line.split(',')).map(s=>s.trim().replace(/^"|"$/g,''));
+      const qty=parseFloat(String(c[3]).replace(/,/g,'')),cost=parseFloat(String(c[4]||'0').replace(/,/g,''));
+      if(!c[1]||Number.isNaN(qty))return;
+      P.items.push({id:uid(),div:c[0]||'',desc:c[1],unit:c[2]||'lot',qty:String(qty),mk:P.mks[0]?P.mks[0].id:'std',manual:true,edc:Number.isNaN(cost)?0:cost,lines:[]});n++;
+    });
+    toast(n?n+' item'+(n>1?'s':'')+' added':'No valid rows found. Use: division, description, unit, quantity, cost.');
+  },
+  print(){let printed=false;const f=()=>{printed=true};window.addEventListener('beforeprint',f,{once:true});try{window.print()}catch(e){}if(!printed)toast('This viewer blocks printing. Open the file directly to print.');return 1}
+};
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||b.tagName==='INPUT')return;
+  const fn=ACTS[b.dataset.act];if(!fn)return;
+  const r=fn(+b.dataset.i,+b.dataset.j,b);
+  if(!r)render();
+});
+document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.t}));
+window.addEventListener('hashchange',render);
+render();
+</script>
