@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -17,7 +18,8 @@ CATEGORIES = ["Material", "Labor", "Equipment"]
 COLUMNS = ["Item", "Quantity", "Unit Cost", "Category"]
 COST_PARTS = ["MaterialCost", "LaborCost", "EquipmentCost"]
 PERT_PARTS = ["Optimistic", "MostLikely", "Pessimistic"]
-CPM_COLUMNS = ["Activity"] + PERT_PARTS + ["Predecessors"] + COST_PARTS
+PROGRESS_PARTS = ["ActualProgress", "ActualCost"]
+CPM_COLUMNS = ["Activity"] + PERT_PARTS + ["Predecessors"] + COST_PARTS + PROGRESS_PARTS
 
 
 def peso(value: float) -> str:
@@ -119,6 +121,15 @@ def draw_network(result: pd.DataFrame, preds: dict):
     return fig
 
 
+def activity_budgets(result: pd.DataFrame, total_cost: float) -> pd.Series:
+    """Budget per activity: the entered costs, else total_cost spread by duration."""
+    costs = result["Cost"].astype(float)
+    if costs.sum() <= 0:
+        weight = result["Duration"].astype(float)
+        costs = weight / weight.sum() * total_cost if weight.sum() > 0 else weight
+    return costs
+
+
 def s_curve(result: pd.DataFrame, total_cost: float) -> pd.DataFrame:
     """Cumulative cost per day for the early-start and late-start schedules.
 
@@ -126,10 +137,7 @@ def s_curve(result: pd.DataFrame, total_cost: float) -> pd.DataFrame:
     cost entered share `total_cost` in proportion to their duration (if every
     activity is blank), so the curve still has a shape.
     """
-    costs = result["Cost"].astype(float)
-    if costs.sum() <= 0:
-        weight = result["Duration"].astype(float)
-        costs = weight / weight.sum() * total_cost if weight.sum() > 0 else weight
+    costs = activity_budgets(result, total_cost)
     days = range(0, math.ceil(result["EF"].max()) + 1)
     out = {"Day": list(days)}
     for label, start in (("Early start", "ES"), ("Late start", "LS")):
@@ -288,6 +296,9 @@ with tab_cpm:
         mat_cost = k1.number_input("Material Cost (₱)", min_value=0.0)
         lab_cost = k2.number_input("Labor Cost (₱)", min_value=0.0)
         eq_cost = k3.number_input("Equipment Cost (₱)", min_value=0.0)
+        g1, g2 = st.columns(2)
+        actual_progress = g1.slider("Actual Progress (%)", min_value=0, max_value=100, value=0)
+        actual_cost_in = g2.number_input("Actual Cost Spent (₱)", min_value=0.0)
         submitted = st.form_submit_button("Add Activity")
 
     if submitted:
@@ -298,7 +309,7 @@ with tab_cpm:
             st.warning(f"Activity {name} already exists.")
         else:
             st.session_state.activities = pd.concat(
-                [st.session_state.activities, pd.DataFrame([[name, optimistic, most_likely, pessimistic, predecessors.strip(), mat_cost, lab_cost, eq_cost]], columns=CPM_COLUMNS)],
+                [st.session_state.activities, pd.DataFrame([[name, optimistic, most_likely, pessimistic, predecessors.strip(), mat_cost, lab_cost, eq_cost, actual_progress, actual_cost_in]], columns=CPM_COLUMNS)],
                 ignore_index=True,
             )
 
@@ -316,7 +327,8 @@ with tab_cpm:
                 "MostLikely": st.column_config.NumberColumn("Most Likely (M)", min_value=0.0),
                 "Pessimistic": st.column_config.NumberColumn("Pessimistic (P)", min_value=0.0),
                 **{c: st.column_config.NumberColumn(c.replace("Cost", " Cost (₱)"), min_value=0.0, format="%.2f")
-                   for c in COST_PARTS},
+                   for c in COST_PARTS + ["ActualCost"]},
+                "ActualProgress": st.column_config.NumberColumn("Actual Progress (%)", min_value=0, max_value=100, step=1),
             },
             key="activities_editor",
         )
@@ -325,7 +337,7 @@ with tab_cpm:
         for c in PERT_PARTS:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
         df["Predecessors"] = df["Predecessors"].fillna("")
-        for c in COST_PARTS:
+        for c in COST_PARTS + PROGRESS_PARTS:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
         st.session_state.activities = df[CPM_COLUMNS].reset_index(drop=True)
 
@@ -430,6 +442,78 @@ with tab_s:
             st.metric("Day when 50% of cost is spent (early start)", f"Day {half}")
             with st.expander("Data table"):
                 st.dataframe(curve.round(2), width="stretch")
+
+        # ---- Earned value: planned vs actual progress ----
+        st.subheader("Planned vs Actual Progress (Earned Value)")
+        budgets = activity_budgets(cpm_result, total_cost)
+        bac = float(budgets.sum())
+        prog = cpm_df.assign(Activity=cpm_df["Activity"].astype(str).str.strip()).set_index("Activity")
+        pct = cpm_result["Activity"].map(prog["ActualProgress"]).fillna(0.0).clip(0, 100) / 100
+        ac_each = cpm_result["Activity"].map(prog["ActualCost"]).fillna(0.0)
+        planned_curve = s_curve(cpm_result, total_cost)["Early start"]
+        status_day = st.number_input(
+            "Status Day (planned value is measured up to this day)", min_value=0.0,
+            max_value=float(planned_curve.index[-1]), value=float(planned_curve.index[-1] // 2), step=1.0)
+        PV = float(np.interp(status_day, planned_curve.index, planned_curve.values))
+        EV = float((budgets * pct).sum())
+        AC = float(ac_each.sum())
+        SV, CV = EV - PV, EV - AC
+        SPI = EV / PV if PV else 0.0
+        CPI = EV / AC if AC else 0.0
+
+        if bac <= 0:
+            st.warning("No budget available. Enter activity costs or build a Cost Estimate.")
+        else:
+            e1, e2, e3, e4 = st.columns(4)
+            e1.metric("Planned Progress", f"{PV / bac:.1%}")
+            e2.metric("Actual Progress", f"{EV / bac:.1%}")
+            e3.metric("Budget at Completion (BAC)", peso(bac))
+            e4.metric("Status Day", f"Day {status_day:g}")
+            st.subheader("Project Performance")
+            p1, p2, p3, p4 = st.columns(4)
+            p1.metric("PV", peso(PV))
+            p2.metric("EV", peso(EV))
+            p3.metric("AC", peso(AC))
+            p4.metric("SPI", f"{SPI:.2f}")
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Schedule Variance (SV)", f"{'-' if SV < 0 else ''}₱{abs(SV):,.2f}")
+            q2.metric("Cost Variance (CV)", f"{'-' if CV < 0 else ''}₱{abs(CV):,.2f}")
+            q3.metric("CPI", f"{CPI:.2f}")
+
+            if PV == 0:
+                st.info("No work is scheduled by this status day, so schedule performance can't be rated.")
+            elif SPI > 1.005:
+                st.success("Ahead of Schedule")
+            elif SPI >= 0.995:
+                st.info("On Schedule")
+            else:
+                st.error("Behind Schedule")
+            if AC == 0:
+                st.info("No actual cost recorded yet, so cost performance can't be rated.")
+            elif CPI > 1.005:
+                st.success("Under Budget")
+            elif CPI >= 0.995:
+                st.info("On Budget")
+            else:
+                st.error("Over Budget")
+
+            fig3, ax3 = plt.subplots(figsize=(12, 6))
+            ax3.plot(planned_curve, label="Planned (PV)", linewidth=3, color="blue")
+            ax3.axvline(status_day, color="gray", linestyle=":", label=f"Status day {status_day:g}")
+            ax3.plot([status_day], [EV], "o", markersize=12, color="green", label=f"Earned (EV) {peso(EV)}")
+            ax3.plot([status_day], [AC], "s", markersize=12, color="red", label=f"Actual cost (AC) {peso(AC)}")
+            ax3.plot([0, status_day], [0, AC], color="red", linestyle="--", alpha=0.6)
+            ax3.plot([0, status_day], [0, EV], color="green", linestyle="--", alpha=0.6)
+            ax3.vlines(status_day, min(EV, PV), max(EV, PV), color="orange", linewidth=4, alpha=0.5)
+            ax3.set_title("Planned vs Actual S-Curve")
+            ax3.set_xlabel("Project Day")
+            ax3.set_ylabel("Cumulative Cost (₱)")
+            ax3.grid(True)
+            ax3.legend()
+            st.pyplot(fig3)
+            plt.close(fig3)
+            st.caption("The orange bar at the status day is the schedule variance (EV vs PV). "
+                       "Dashed lines run from the start to the earned value and actual cost reached so far.")
 
         # ---- PERT-based scenarios: full CPM run on O, M and P durations ----
         st.subheader("PERT-Based S-Curve Analysis")
