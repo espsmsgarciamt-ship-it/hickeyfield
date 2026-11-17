@@ -30,7 +30,7 @@ def parse_preds(text) -> list[str]:
     return [p.strip() for p in text.split(",") if p.strip()]
 
 
-def compute_cpm(rows: pd.DataFrame):
+def compute_cpm(rows: pd.DataFrame, dur_col: str = "Duration"):
     """Return (results DataFrame, project duration, critical path) or raise ValueError."""
     acts = {}
     for _, r in rows.iterrows():
@@ -39,7 +39,7 @@ def compute_cpm(rows: pd.DataFrame):
             raise ValueError(f"Activity {name}: estimates must satisfy O ≤ M ≤ P.")
         if name in acts:
             raise ValueError(f"Duplicate activity ID: {name}")
-        acts[name] = {"duration": float(r["Duration"]), "preds": parse_preds(r["Predecessors"]),
+        acts[name] = {"duration": float(r[dur_col]), "preds": parse_preds(r["Predecessors"]),
                       "cost": float(sum(r[c] for c in COST_PARTS))}
 
     for name, a in acts.items():
@@ -267,6 +267,7 @@ with tab_pert:
 # CPM MODULE
 # -----------------------------
 cpm_result = None
+cpm_df = None
 with tab_cpm:
     st.header("Critical Path Method (CPM)")
     st.markdown(
@@ -342,6 +343,7 @@ with tab_cpm:
             st.error(str(e))
         else:
             cpm_result = result_df
+            cpm_df = df
             st.subheader("PERT Analysis")
             pert_df = df[["Activity", "Optimistic", "MostLikely", "Pessimistic", "ExpectedTime", "Variance"]].rename(
                 columns={"Optimistic": "O", "MostLikely": "M", "Pessimistic": "P", "ExpectedTime": "Expected Time"})
@@ -428,6 +430,37 @@ with tab_s:
             st.metric("Day when 50% of cost is spent (early start)", f"Day {half}")
             with st.expander("Data table"):
                 st.dataframe(curve.round(2), width="stretch")
+
+        # ---- PERT-based scenarios: full CPM run on O, M and P durations ----
+        st.subheader("PERT-Based S-Curve Analysis")
+        scen = {}
+        for label, col in (("Optimistic", "Optimistic"), ("Expected", "ExpectedTime"), ("Pessimistic", "Pessimistic")):
+            res, finish, _ = compute_cpm(cpm_df, col)
+            scen[label] = (s_curve(res, total_cost)["Early start"], finish)
+        n_days = max(len(c) for c, _ in scen.values())
+        curves = {k: c.reindex(range(n_days)).ffill() for k, (c, _) in scen.items()}  # hold final cost after finish
+        fig2, ax2 = plt.subplots(figsize=(12, 6))
+        ax2.plot(curves["Optimistic"], color="green", linewidth=2, label="Optimistic")
+        ax2.plot(curves["Expected"], color="blue", linewidth=3, label="Expected")
+        ax2.plot(curves["Pessimistic"], color="red", linewidth=2, label="Pessimistic")
+        ax2.fill_between(curves["Optimistic"].index, curves["Optimistic"], curves["Pessimistic"], alpha=0.20, color="orange")
+        ax2.set_title("PERT Cost S-Curve")
+        ax2.set_xlabel("Project Days")
+        ax2.set_ylabel("Cumulative Cost (₱)")
+        ax2.grid(True)
+        ax2.legend()
+        st.pyplot(fig2)
+        plt.close(fig2)
+
+        best_finish, expected_finish, worst_finish = (scen[k][1] for k in ("Optimistic", "Expected", "Pessimistic"))
+        z1, z2, z3, z4 = st.columns(4)
+        z1.metric("Best Case", f"{best_finish:g} Days")
+        z2.metric("Expected", f"{expected_finish:g} Days")
+        z3.metric("Worst Case", f"{worst_finish:g} Days")
+        z4.metric("Schedule Risk Window", f"{worst_finish - best_finish:g} Days")
+        if expected_finish > 0:
+            st.metric("Average Daily Burn Rate", f"₱{budget / expected_finish:,.2f}/day")
+        st.caption("Each curve is a full CPM schedule run on that duration set, so parallel activities overlap.")
 
 st.markdown("---")
 st.caption("ProjectPERT Estimator v2.0")
