@@ -15,7 +15,8 @@ st.subheader("Cost Estimate + PERT + CPM + S-Curve")
 
 CATEGORIES = ["Material", "Labor", "Equipment"]
 COLUMNS = ["Item", "Quantity", "Unit Cost", "Category"]
-CPM_COLUMNS = ["Activity", "Duration", "Predecessors", "Cost"]
+COST_PARTS = ["MaterialCost", "LaborCost", "EquipmentCost"]
+CPM_COLUMNS = ["Activity", "Duration", "Predecessors"] + COST_PARTS
 
 
 def peso(value: float) -> str:
@@ -36,7 +37,7 @@ def compute_cpm(rows: pd.DataFrame):
         if name in acts:
             raise ValueError(f"Duplicate activity ID: {name}")
         acts[name] = {"duration": float(r["Duration"]), "preds": parse_preds(r["Predecessors"]),
-                      "cost": float(r["Cost"])}
+                      "cost": float(sum(r[c] for c in COST_PARTS))}
 
     for name, a in acts.items():
         for p in a["preds"]:
@@ -267,17 +268,19 @@ with tab_cpm:
     st.header("Critical Path Method (CPM)")
     st.markdown(
         "Enter activities with a duration (days), comma-separated predecessors "
-        "(blank or `-` for none) and an optional cost used by the S-Curve."
+        "(blank or `-` for none) and optional material, labor and equipment costs used by the S-Curve."
     )
     if "activities" not in st.session_state:
         st.session_state.activities = pd.DataFrame(columns=CPM_COLUMNS)
 
     with st.form("add_activity", clear_on_submit=True):
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         activity = c1.text_input("Activity ID")
         duration = c2.number_input("Duration (Days)", min_value=0.0, value=1.0)
         predecessors = c3.text_input("Predecessors", placeholder="A,B")
-        act_cost = c4.number_input("Cost (₱, optional)", min_value=0.0)
+        mat_cost = c4.number_input("Material Cost (₱)", min_value=0.0)
+        lab_cost = c5.number_input("Labor Cost (₱)", min_value=0.0)
+        eq_cost = c6.number_input("Equipment Cost (₱)", min_value=0.0)
         submitted = st.form_submit_button("Add Activity")
 
     if submitted:
@@ -288,7 +291,7 @@ with tab_cpm:
             st.warning(f"Activity {name} already exists.")
         else:
             st.session_state.activities = pd.concat(
-                [st.session_state.activities, pd.DataFrame([[name, duration, predecessors.strip(), act_cost]], columns=CPM_COLUMNS)],
+                [st.session_state.activities, pd.DataFrame([[name, duration, predecessors.strip(), mat_cost, lab_cost, eq_cost]], columns=CPM_COLUMNS)],
                 ignore_index=True,
             )
 
@@ -303,7 +306,8 @@ with tab_cpm:
             hide_index=True,
             column_config={
                 "Duration": st.column_config.NumberColumn(min_value=0.0),
-                "Cost": st.column_config.NumberColumn("Cost (₱)", min_value=0.0, format="%.2f"),
+                **{c: st.column_config.NumberColumn(c.replace("Cost", " Cost (₱)"), min_value=0.0, format="%.2f")
+                   for c in COST_PARTS},
             },
             key="activities_editor",
         )
@@ -311,7 +315,8 @@ with tab_cpm:
         df = df[df["Activity"].astype(str).str.strip() != ""]
         df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce").fillna(0.0)
         df["Predecessors"] = df["Predecessors"].fillna("")
-        df["Cost"] = pd.to_numeric(df["Cost"], errors="coerce").fillna(0.0)
+        for c in COST_PARTS:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
         st.session_state.activities = df[CPM_COLUMNS].reset_index(drop=True)
 
         if st.button("Clear all activities"):
@@ -361,8 +366,33 @@ with tab_s:
             st.warning("No costs available. Enter activity costs or build a Cost Estimate.")
         else:
             data = curve / curve.iloc[-1].max() * 100 if view == "Cumulative %" else curve
-            st.line_chart(data)
-            st.caption("Between the early-start and late-start curves is the schedule band: a plan that stays inside it can still finish on time.")
+            st.markdown("**Actual cost to date** (cumulative ₱ at the end of each project day)")
+            if "actual_cost" not in st.session_state:
+                st.session_state.actual_cost = pd.DataFrame({"Day": pd.Series(dtype=int), "Actual Cumulative Cost": pd.Series(dtype=float)})
+            actual_df = st.data_editor(
+                st.session_state.actual_cost, num_rows="dynamic", hide_index=True, key="actual_editor",
+                column_config={
+                    "Day": st.column_config.NumberColumn(min_value=0, step=1),
+                    "Actual Cumulative Cost": st.column_config.NumberColumn("Actual Cumulative Cost (₱)", min_value=0.0, format="%.2f"),
+                },
+            )
+            actual = actual_df.dropna().sort_values("Day")
+            st.session_state.actual_cost = actual.reset_index(drop=True)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(data.index, data["Early start"], linewidth=3, marker="o", label="Planned (early start)")
+            if not actual.empty:
+                actual_y = actual["Actual Cumulative Cost"] / curve.iloc[-1].max() * 100 if view == "Cumulative %" else actual["Actual Cumulative Cost"]
+                ax.plot(actual["Day"], actual_y, linewidth=3, marker="o", color="green", label="Actual")
+            ax.plot(data.index, data["Late start"], linewidth=2, linestyle="--", marker="s", color="orange", label="Latest-start limit")
+            ax.fill_between(data.index, data["Early start"], data["Late start"], color="orange", alpha=0.15)
+            ax.set_title("Project S-Curve")
+            ax.set_xlabel("Project Day")
+            ax.set_ylabel("Cumulative %" if view == "Cumulative %" else "Cumulative Cost (₱)")
+            ax.grid(True)
+            ax.legend()
+            st.pyplot(fig)
+            plt.close(fig)
+            st.caption("The shaded band between the early-start and late-start curves is the schedule band: a plan that stays inside it can still finish on time.")
             half = (curve["Early start"] >= curve["Early start"].iloc[-1] / 2).idxmax()
             st.metric("Day when 50% of cost is spent (early start)", f"Day {half}")
             with st.expander("Data table"):
