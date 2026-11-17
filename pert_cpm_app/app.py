@@ -16,7 +16,8 @@ st.subheader("Cost Estimate + PERT + CPM + S-Curve")
 CATEGORIES = ["Material", "Labor", "Equipment"]
 COLUMNS = ["Item", "Quantity", "Unit Cost", "Category"]
 COST_PARTS = ["MaterialCost", "LaborCost", "EquipmentCost"]
-CPM_COLUMNS = ["Activity", "Duration", "Predecessors"] + COST_PARTS
+PERT_PARTS = ["Optimistic", "MostLikely", "Pessimistic"]
+CPM_COLUMNS = ["Activity"] + PERT_PARTS + ["Predecessors"] + COST_PARTS
 
 
 def peso(value: float) -> str:
@@ -34,6 +35,8 @@ def compute_cpm(rows: pd.DataFrame):
     acts = {}
     for _, r in rows.iterrows():
         name = str(r["Activity"]).strip()
+        if not (r["Optimistic"] <= r["MostLikely"] <= r["Pessimistic"]):
+            raise ValueError(f"Activity {name}: estimates must satisfy O ≤ M ≤ P.")
         if name in acts:
             raise ValueError(f"Duplicate activity ID: {name}")
         acts[name] = {"duration": float(r["Duration"]), "preds": parse_preds(r["Predecessors"]),
@@ -267,20 +270,23 @@ cpm_result = None
 with tab_cpm:
     st.header("Critical Path Method (CPM)")
     st.markdown(
-        "Enter activities with a duration (days), comma-separated predecessors "
+        "Enter activities with PERT estimates O, M and P (days; duration = (O + 4M + P) / 6), comma-separated predecessors "
         "(blank or `-` for none) and optional material, labor and equipment costs used by the S-Curve."
     )
     if "activities" not in st.session_state:
         st.session_state.activities = pd.DataFrame(columns=CPM_COLUMNS)
 
     with st.form("add_activity", clear_on_submit=True):
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        activity = c1.text_input("Activity ID")
-        duration = c2.number_input("Duration (Days)", min_value=0.0, value=1.0)
-        predecessors = c3.text_input("Predecessors", placeholder="A,B")
-        mat_cost = c4.number_input("Material Cost (₱)", min_value=0.0)
-        lab_cost = c5.number_input("Labor Cost (₱)", min_value=0.0)
-        eq_cost = c6.number_input("Equipment Cost (₱)", min_value=0.0)
+        col1, col2, col3, col4 = st.columns(4)
+        activity = col1.text_input("Activity")
+        optimistic = col2.number_input("Optimistic (O)", min_value=1.0, value=1.0)
+        most_likely = col3.number_input("Most Likely (M)", min_value=1.0, value=1.0)
+        pessimistic = col4.number_input("Pessimistic (P)", min_value=1.0, value=1.0)
+        predecessors = st.text_input("Predecessors", placeholder="A,B")
+        k1, k2, k3 = st.columns(3)
+        mat_cost = k1.number_input("Material Cost (₱)", min_value=0.0)
+        lab_cost = k2.number_input("Labor Cost (₱)", min_value=0.0)
+        eq_cost = k3.number_input("Equipment Cost (₱)", min_value=0.0)
         submitted = st.form_submit_button("Add Activity")
 
     if submitted:
@@ -291,7 +297,7 @@ with tab_cpm:
             st.warning(f"Activity {name} already exists.")
         else:
             st.session_state.activities = pd.concat(
-                [st.session_state.activities, pd.DataFrame([[name, duration, predecessors.strip(), mat_cost, lab_cost, eq_cost]], columns=CPM_COLUMNS)],
+                [st.session_state.activities, pd.DataFrame([[name, optimistic, most_likely, pessimistic, predecessors.strip(), mat_cost, lab_cost, eq_cost]], columns=CPM_COLUMNS)],
                 ignore_index=True,
             )
 
@@ -305,7 +311,9 @@ with tab_cpm:
             num_rows="dynamic",
             hide_index=True,
             column_config={
-                "Duration": st.column_config.NumberColumn(min_value=0.0),
+                "Optimistic": st.column_config.NumberColumn("Optimistic (O)", min_value=0.0),
+                "MostLikely": st.column_config.NumberColumn("Most Likely (M)", min_value=0.0),
+                "Pessimistic": st.column_config.NumberColumn("Pessimistic (P)", min_value=0.0),
                 **{c: st.column_config.NumberColumn(c.replace("Cost", " Cost (₱)"), min_value=0.0, format="%.2f")
                    for c in COST_PARTS},
             },
@@ -313,7 +321,8 @@ with tab_cpm:
         )
         df = edited.dropna(subset=["Activity"]).copy()
         df = df[df["Activity"].astype(str).str.strip() != ""]
-        df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce").fillna(0.0)
+        for c in PERT_PARTS:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
         df["Predecessors"] = df["Predecessors"].fillna("")
         for c in COST_PARTS:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
@@ -323,6 +332,9 @@ with tab_cpm:
             st.session_state.activities = pd.DataFrame(columns=CPM_COLUMNS)
             st.rerun()
 
+        # PERT: expected duration TE = (O + 4M + P) / 6 and variance ((P - O) / 6)^2
+        df["Duration"] = (df["Optimistic"] + 4 * df["MostLikely"] + df["Pessimistic"]) / 6
+        df["Variance"] = ((df["Pessimistic"] - df["Optimistic"]) / 6) ** 2
         try:
             result_df, project_duration, critical_path = compute_cpm(df)
         except ValueError as e:
@@ -334,6 +346,18 @@ with tab_cpm:
             st.dataframe(shown, hide_index=True, width="stretch")
             st.metric("Project Duration", f"{project_duration:g} Days")
             st.error(f"Critical Path: {' → '.join(critical_path)}")
+
+            crit_var = df.loc[df["Activity"].astype(str).str.strip().isin(critical_path), "Variance"].sum()
+            sigma = math.sqrt(crit_var)
+            v1, v2 = st.columns(2)
+            v1.metric("Critical Path Variance", f"{crit_var:.2f}")
+            v2.metric("Std. Deviation (σ)", f"{sigma:.2f} Days")
+            target = st.number_input("Target duration (Days)", min_value=0.0, value=float(math.ceil(project_duration)))
+            if sigma > 0:
+                prob = 0.5 * (1 + math.erf((target - project_duration) / (sigma * math.sqrt(2))))
+                st.info(f"Probability of finishing within {target:g} days: {prob:.1%}")
+            else:
+                st.info(f"No uncertainty on the critical path: finishes in {project_duration:g} days.")
 
             st.subheader("📊 CPM Network Diagram")
             fig = draw_network(result_df, {n: parse_preds(p) for n, p in zip(df["Activity"].astype(str).str.strip(), df["Predecessors"])})
