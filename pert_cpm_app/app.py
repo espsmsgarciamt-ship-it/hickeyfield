@@ -1,5 +1,10 @@
 import math
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import networkx as nx
 import pandas as pd
 import streamlit as st
 
@@ -72,6 +77,42 @@ def compute_cpm(rows: pd.DataFrame):
     return result, duration, critical
 
 
+
+
+def draw_network(result: pd.DataFrame, preds: dict):
+    """Layered left-to-right network: column = longest chain of predecessors."""
+    info = result.set_index("Activity")
+    G = nx.DiGraph()
+    G.add_nodes_from(info.index)
+    for act, ps in preds.items():
+        G.add_edges_from((p, act) for p in ps)
+
+    level = {}
+    for n in info.index:  # `result` is already in dependency order
+        level[n] = 1 + max((level[p] for p in preds[n]), default=-1)
+    rows = {}
+    for n, lv in level.items():
+        rows.setdefault(lv, []).append(n)
+    pos = {}
+    for lv, names in rows.items():
+        for i, n in enumerate(names):
+            pos[n] = (lv, (len(names) - 1) / 2 - i)
+
+    critical = info["Float"].abs() < 1e-9
+    fig, ax = plt.subplots(figsize=(max(8, 2.6 * (max(level.values()) + 1)), max(4, 2.2 * max(map(len, rows.values())))))
+    nx.draw_networkx_nodes(G, pos, node_color=["red" if critical[n] else "skyblue" for n in G.nodes()],
+                           node_size=5200, ax=ax)
+    nx.draw_networkx_edges(G, pos, arrows=True, arrowsize=20, node_size=5200, edge_color="black", ax=ax,
+                           edgelist=[e for e in G.edges() if not (critical[e[0]] and critical[e[1]])])
+    nx.draw_networkx_edges(G, pos, arrows=True, arrowsize=20, node_size=5200, edge_color="red", width=2.5, ax=ax,
+                           edgelist=[e for e in G.edges() if critical[e[0]] and critical[e[1]]])
+    labels = {n: f"{n}\nD={info.at[n, 'Duration']:g}\nES={info.at[n, 'ES']:g}  EF={info.at[n, 'EF']:g}\n"
+                 f"LS={info.at[n, 'LS']:g}  LF={info.at[n, 'LF']:g}" for n in G.nodes()}
+    nx.draw_networkx_labels(G, pos, labels, font_size=8, font_weight="bold", ax=ax)
+    ax.set_xlim(-0.6, max(level.values()) + 0.6)
+    ax.margins(y=0.2)
+    ax.axis("off")
+    return fig
 
 
 def s_curve(result: pd.DataFrame, total_cost: float) -> pd.DataFrame:
@@ -288,6 +329,12 @@ with tab_cpm:
             st.dataframe(shown, hide_index=True, width="stretch")
             st.metric("Project Duration", f"{project_duration:g} Days")
             st.error(f"Critical Path: {' → '.join(critical_path)}")
+
+            st.subheader("📊 CPM Network Diagram")
+            fig = draw_network(result_df, {n: parse_preds(p) for n, p in zip(df["Activity"].astype(str).str.strip(), df["Predecessors"])})
+            st.pyplot(fig)
+            plt.close(fig)
+            st.caption("Red = critical activities (zero float). Arrows run left to right in order of dependency.")
 
 # -----------------------------
 # S-CURVE MODULE
