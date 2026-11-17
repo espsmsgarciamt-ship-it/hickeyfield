@@ -1,25 +1,110 @@
+import math
+
 import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="ProjectPERT Estimator", layout="wide")
 
 st.title("🏗️ ProjectPERT Estimator")
-st.subheader("Detailed Cost Estimate + PERT Calculator")
+st.subheader("Cost Estimate + PERT + CPM + S-Curve")
 
 CATEGORIES = ["Material", "Labor", "Equipment"]
 COLUMNS = ["Item", "Quantity", "Unit Cost", "Category"]
+CPM_COLUMNS = ["Activity", "Duration", "Predecessors", "Cost"]
 
 
 def peso(value: float) -> str:
     return f"₱ {value:,.2f}"
 
 
-tab1, tab2 = st.tabs(["Cost Estimate", "PERT"])
+def parse_preds(text) -> list[str]:
+    if not isinstance(text, str) or text.strip() == "-":
+        return []
+    return [p.strip() for p in text.split(",") if p.strip()]
+
+
+def compute_cpm(rows: pd.DataFrame):
+    """Return (results DataFrame, project duration, critical path) or raise ValueError."""
+    acts = {}
+    for _, r in rows.iterrows():
+        name = str(r["Activity"]).strip()
+        if name in acts:
+            raise ValueError(f"Duplicate activity ID: {name}")
+        acts[name] = {"duration": float(r["Duration"]), "preds": parse_preds(r["Predecessors"]),
+                      "cost": float(r["Cost"])}
+
+    for name, a in acts.items():
+        for p in a["preds"]:
+            if p not in acts:
+                raise ValueError(f"Activity {name} has unknown predecessor: {p}")
+            if p == name:
+                raise ValueError(f"Activity {name} cannot be its own predecessor.")
+
+    # Topological order (independent of the order activities were entered).
+    order, done = [], set()
+    while len(order) < len(acts):
+        ready = [n for n in acts if n not in done and all(p in done for p in acts[n]["preds"])]
+        if not ready:
+            left = ", ".join(n for n in acts if n not in done)
+            raise ValueError(f"Circular dependency among: {left}")
+        for n in ready:
+            order.append(n)
+            done.add(n)
+
+    for n in order:  # forward pass
+        a = acts[n]
+        a["ES"] = max((acts[p]["EF"] for p in a["preds"]), default=0)
+        a["EF"] = a["ES"] + a["duration"]
+    duration = max(a["EF"] for a in acts.values())
+
+    for n in reversed(order):  # backward pass
+        a = acts[n]
+        succ = [acts[s]["LS"] for s in acts if n in acts[s]["preds"]]
+        a["LF"] = min(succ, default=duration)
+        a["LS"] = a["LF"] - a["duration"]
+        a["Float"] = a["LS"] - a["ES"]
+
+    result = pd.DataFrame(
+        [[n, a["duration"], a["cost"], a["ES"], a["EF"], a["LS"], a["LF"], a["Float"]] for n, a in ((n, acts[n]) for n in order)],
+        columns=["Activity", "Duration", "Cost", "ES", "EF", "LS", "LF", "Float"],
+    )
+    critical = [n for n in order if abs(acts[n]["Float"]) < 1e-9]
+    return result, duration, critical
+
+
+
+
+def s_curve(result: pd.DataFrame, total_cost: float) -> pd.DataFrame:
+    """Cumulative cost per day for the early-start and late-start schedules.
+
+    Each activity's cost is spread evenly over its duration. Activities with no
+    cost entered share `total_cost` in proportion to their duration (if every
+    activity is blank), so the curve still has a shape.
+    """
+    costs = result["Cost"].astype(float)
+    if costs.sum() <= 0:
+        weight = result["Duration"].astype(float)
+        costs = weight / weight.sum() * total_cost if weight.sum() > 0 else weight
+    days = range(0, math.ceil(result["EF"].max()) + 1)
+    out = {"Day": list(days)}
+    for label, start in (("Early start", "ES"), ("Late start", "LS")):
+        cum = []
+        for t in days:
+            total = 0.0
+            for c, s, d in zip(costs, result[start], result["Duration"]):
+                frac = 1.0 if d == 0 and t >= s else (0.0 if d == 0 else min(max((t - s) / d, 0.0), 1.0))
+                total += c * frac
+            cum.append(total)
+        out[label] = cum
+    return pd.DataFrame(out).set_index("Day")
+
+
+tab_cost, tab_pert, tab_cpm, tab_s = st.tabs(["Cost Estimate", "PERT", "CPM", "S-Curve"])
 
 # -----------------------------
 # COST ESTIMATE MODULE
 # -----------------------------
-with tab1:
+with tab_cost:
     st.header("Detailed Cost Estimate")
 
     if "cost_items" not in st.session_state:
@@ -42,6 +127,7 @@ with tab1:
                 [st.session_state.cost_items, new_row], ignore_index=True
             )
 
+    st.session_state.grand_total = 0.0
     if st.session_state.cost_items.empty:
         st.info("No items yet. Add one above.")
     else:
@@ -86,6 +172,7 @@ with tab1:
         subtotal = direct_cost + ohp + contingency
         vat = subtotal * vat_percent / 100
         grand_total = subtotal + vat
+        st.session_state.grand_total = float(grand_total)
 
         st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
@@ -110,7 +197,7 @@ with tab1:
 # -----------------------------
 # PERT MODULE
 # -----------------------------
-with tab2:
+with tab_pert:
     st.header("PERT Calculator")
 
     optimistic = st.number_input("Optimistic Time (O)", min_value=0.0, value=2.0)
@@ -131,5 +218,108 @@ with tab2:
 
         st.info("Formulas: TE = (O + 4M + P) / 6 | σ = (P − O) / 6 | Variance = σ²")
 
+# -----------------------------
+# CPM MODULE
+# -----------------------------
+cpm_result = None
+with tab_cpm:
+    st.header("Critical Path Method (CPM)")
+    st.markdown(
+        "Enter activities with a duration (days), comma-separated predecessors "
+        "(blank or `-` for none) and an optional cost used by the S-Curve."
+    )
+    if "activities" not in st.session_state:
+        st.session_state.activities = pd.DataFrame(columns=CPM_COLUMNS)
+
+    with st.form("add_activity", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns(4)
+        activity = c1.text_input("Activity ID")
+        duration = c2.number_input("Duration (Days)", min_value=0.0, value=1.0)
+        predecessors = c3.text_input("Predecessors", placeholder="A,B")
+        act_cost = c4.number_input("Cost (₱, optional)", min_value=0.0)
+        submitted = st.form_submit_button("Add Activity")
+
+    if submitted:
+        name = activity.strip()
+        if not name:
+            st.warning("Enter an Activity ID.")
+        elif name in set(st.session_state.activities["Activity"]):
+            st.warning(f"Activity {name} already exists.")
+        else:
+            st.session_state.activities = pd.concat(
+                [st.session_state.activities, pd.DataFrame([[name, duration, predecessors.strip(), act_cost]], columns=CPM_COLUMNS)],
+                ignore_index=True,
+            )
+
+    if st.session_state.activities.empty:
+        st.info("No activities yet. Add one above.")
+    else:
+        st.subheader("Activities")
+        st.caption("Edit cells directly, or select rows and press Delete to remove them.")
+        edited = st.data_editor(
+            st.session_state.activities,
+            num_rows="dynamic",
+            hide_index=True,
+            column_config={
+                "Duration": st.column_config.NumberColumn(min_value=0.0),
+                "Cost": st.column_config.NumberColumn("Cost (₱)", min_value=0.0, format="%.2f"),
+            },
+            key="activities_editor",
+        )
+        df = edited.dropna(subset=["Activity"]).copy()
+        df = df[df["Activity"].astype(str).str.strip() != ""]
+        df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce").fillna(0.0)
+        df["Predecessors"] = df["Predecessors"].fillna("")
+        df["Cost"] = pd.to_numeric(df["Cost"], errors="coerce").fillna(0.0)
+        st.session_state.activities = df[CPM_COLUMNS].reset_index(drop=True)
+
+        if st.button("Clear all activities"):
+            st.session_state.activities = pd.DataFrame(columns=CPM_COLUMNS)
+            st.rerun()
+
+        try:
+            result_df, project_duration, critical_path = compute_cpm(df)
+        except ValueError as e:
+            st.error(str(e))
+        else:
+            cpm_result = result_df
+            st.subheader("CPM Results")
+            shown = result_df.assign(Critical=result_df["Float"].abs().lt(1e-9).map({True: "★", False: ""}))
+            st.dataframe(shown, hide_index=True, width="stretch")
+            st.metric("Project Duration", f"{project_duration:g} Days")
+            st.error(f"Critical Path: {' → '.join(critical_path)}")
+
+# -----------------------------
+# S-CURVE MODULE
+# -----------------------------
+with tab_s:
+    st.header("S-Curve")
+    if cpm_result is None:
+        st.info("Add valid activities in the CPM tab first. The S-Curve is built from the CPM schedule.")
+    else:
+        total_cost = st.session_state.get("grand_total", 0.0)
+        entered = cpm_result["Cost"].sum()
+        if entered > 0:
+            budget = entered
+            st.caption(f"Using the activity costs from the CPM tab (total {peso(entered)}).")
+        else:
+            budget = total_cost
+            st.caption(
+                "No activity costs entered, so the Cost Estimate grand total "
+                f"({peso(total_cost)}) is spread across activities by duration."
+            )
+        view = st.radio("Show", ["Cumulative %", "Cumulative cost (₱)"], horizontal=True)
+        curve = s_curve(cpm_result, total_cost)
+        if budget <= 0 and view == "Cumulative %":
+            st.warning("No costs available. Enter activity costs or build a Cost Estimate.")
+        else:
+            data = curve / curve.iloc[-1].max() * 100 if view == "Cumulative %" else curve
+            st.line_chart(data)
+            st.caption("Between the early-start and late-start curves is the schedule band: a plan that stays inside it can still finish on time.")
+            half = (curve["Early start"] >= curve["Early start"].iloc[-1] / 2).idxmax()
+            st.metric("Day when 50% of cost is spent (early start)", f"Day {half}")
+            with st.expander("Data table"):
+                st.dataframe(curve.round(2), width="stretch")
+
 st.markdown("---")
-st.caption("ProjectPERT Estimator v1.1")
+st.caption("ProjectPERT Estimator v2.0")
