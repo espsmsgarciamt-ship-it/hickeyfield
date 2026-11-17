@@ -1,4 +1,5 @@
 import math
+from datetime import date, timedelta
 
 import matplotlib
 
@@ -497,23 +498,91 @@ with tab_s:
             else:
                 st.error("Over Budget")
 
+            # ---- Forecasting (EVM) ----
+            st.subheader("📊 Forecast Analysis")
+            planned_duration = float(cpm_result["EF"].max())
+            # Without both cost and earned value there is no CPI to extrapolate: assume plan performance.
+            CPI_f = EV / AC if AC > 0 and EV > 0 else 1.0
+            EAC = bac / CPI_f
+            ETC = EAC - AC
+            VAC = bac - EAC
+            TCPI = (bac - EV) / (bac - AC) if bac != AC else None
+            SPI_f = SPI if PV > 0 and SPI > 0 else 1.0
+            forecast_duration = planned_duration / SPI_f
+            delay = forecast_duration - planned_duration
+            project_start = st.date_input("Project Start Date", value=date.today())
+            forecast_finish = project_start + timedelta(days=math.ceil(forecast_duration))
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("EAC", peso(EAC))
+            c2.metric("ETC", peso(ETC))
+            c3.metric("VAC", f"{'-' if VAC < 0 else ''}₱{abs(VAC):,.2f}")
+            c4.metric("TCPI", f"{TCPI:.2f}" if TCPI is not None else "n/a")
+            d1, d2, d3 = st.columns(3)
+            d1.metric("Forecast Duration", f"{forecast_duration:.1f} Days", f"{delay:+.1f} vs plan", delta_color="inverse")
+            d2.metric("Forecast Completion", forecast_finish.strftime("%Y-%m-%d"))
+            d3.metric("Planned Duration", f"{planned_duration:g} Days")
+
+            if VAC > 0:
+                st.success(f"Expected to finish under budget by ₱{VAC:,.2f}.")
+            elif VAC < 0:
+                st.error(f"Expected to finish over budget by ₱{-VAC:,.2f}.")
+            else:
+                st.info("Expected to finish on budget.")
+            if delay > 0.05:
+                st.error(f"Project is expected to finish {delay:.0f} days late.")
+            elif delay < -0.05:
+                st.success(f"Project is expected to finish {-delay:.0f} days early.")
+            else:
+                st.info("Project is expected to finish on time.")
+            if TCPI is None:
+                st.info("TCPI is undefined: the budget is fully spent (BAC = AC).")
+            elif TCPI < 0:
+                st.error(f"TCPI {TCPI:.2f}: the budget is exhausted before the work is done, so it cannot be met.")
+            elif TCPI > 1:
+                st.warning(f"TCPI {TCPI:.2f} > 1: remaining work must be done more efficiently than so far to finish on budget.")
+            else:
+                st.success(f"TCPI {TCPI:.2f} ≤ 1: finishing on budget is achievable.")
+
+            cpi_k = CPI if AC > 0 else 1.0  # unrated measures count as on plan
+            spi_k = SPI if PV > 0 else 1.0
+            if cpi_k < 0.995 and spi_k < 0.995:
+                status = "🔴 Delayed and Over Budget"
+            elif cpi_k < 0.995:
+                status = "🟠 Over Budget"
+            elif spi_k < 0.995:
+                status = "🟡 Behind Schedule"
+            else:
+                status = "🟢 On Track"
+            st.warning(f"Executive Status: {status}")
+
+            # Forecast curve: AC today -> EAC at the forecast finish, shaped like the planned remaining work.
+            end_p = planned_curve.index[-1]
+            u = np.linspace(0, 1, 40)
+            if bac > PV and end_p > status_day:
+                shape = (np.interp(status_day + u * (end_p - status_day), planned_curve.index, planned_curve.values) - PV) / (bac - PV)
+            else:
+                shape = u
+            f_days = status_day + u * max(forecast_duration - status_day, 0)
+            f_cost = AC + shape * (EAC - AC)
+
             fig3, ax3 = plt.subplots(figsize=(12, 6))
             ax3.plot(planned_curve, label="Planned (PV)", linewidth=3, color="blue")
             ax3.axvline(status_day, color="gray", linestyle=":", label=f"Status day {status_day:g}")
-            ax3.plot([status_day], [EV], "o", markersize=12, color="green", label=f"Earned (EV) {peso(EV)}")
-            ax3.plot([status_day], [AC], "s", markersize=12, color="red", label=f"Actual cost (AC) {peso(AC)}")
-            ax3.plot([0, status_day], [0, AC], color="red", linestyle="--", alpha=0.6)
-            ax3.plot([0, status_day], [0, EV], color="green", linestyle="--", alpha=0.6)
-            ax3.vlines(status_day, min(EV, PV), max(EV, PV), color="orange", linewidth=4, alpha=0.5)
-            ax3.set_title("Planned vs Actual S-Curve")
+            ax3.plot([0, status_day], [0, AC], color="green", linewidth=3, label=f"Actual cost (AC) {peso(AC)}")
+            ax3.plot([status_day], [AC], "o", markersize=10, color="green")
+            ax3.plot([status_day], [EV], "D", markersize=10, color="purple", label=f"Earned (EV) {peso(EV)}")
+            ax3.plot(f_days, f_cost, linewidth=3, color="orange", linestyle="--", label=f"Forecast (EAC {peso(EAC)})")
+            ax3.vlines(status_day, min(EV, PV), max(EV, PV), color="red", linewidth=4, alpha=0.4)
+            ax3.set_title("Planned vs Actual vs Forecast S-Curve")
             ax3.set_xlabel("Project Day")
             ax3.set_ylabel("Cumulative Cost (₱)")
             ax3.grid(True)
             ax3.legend()
             st.pyplot(fig3)
             plt.close(fig3)
-            st.caption("The orange bar at the status day is the schedule variance (EV vs PV). "
-                       "Dashed lines run from the start to the earned value and actual cost reached so far.")
+            st.caption("Blue = planned, green = actual cost so far, orange = forecast to the expected finish. "
+                       "The red bar at the status day is the schedule variance (EV vs PV).")
 
         # ---- PERT-based scenarios: full CPM run on O, M and P durations ----
         st.subheader("PERT-Based S-Curve Analysis")
