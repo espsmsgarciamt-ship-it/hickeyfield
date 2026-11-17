@@ -333,14 +333,19 @@ with tab_cpm:
             st.rerun()
 
         # PERT: expected duration TE = (O + 4M + P) / 6 and variance ((P - O) / 6)^2
-        df["Duration"] = (df["Optimistic"] + 4 * df["MostLikely"] + df["Pessimistic"]) / 6
+        df["ExpectedTime"] = (df["Optimistic"] + 4 * df["MostLikely"] + df["Pessimistic"]) / 6
         df["Variance"] = ((df["Pessimistic"] - df["Optimistic"]) / 6) ** 2
+        df["Duration"] = df["ExpectedTime"]  # CPM runs on the PERT expected time
         try:
             result_df, project_duration, critical_path = compute_cpm(df)
         except ValueError as e:
             st.error(str(e))
         else:
             cpm_result = result_df
+            st.subheader("PERT Analysis")
+            pert_df = df[["Activity", "Optimistic", "MostLikely", "Pessimistic", "ExpectedTime", "Variance"]].rename(
+                columns={"Optimistic": "O", "MostLikely": "M", "Pessimistic": "P", "ExpectedTime": "Expected Time"})
+            st.dataframe(pert_df.round(2), hide_index=True, width="stretch")
             st.subheader("CPM Results")
             shown = result_df.assign(Critical=result_df["Float"].abs().lt(1e-9).map({True: "★", False: ""}))
             st.dataframe(shown, hide_index=True, width="stretch")
@@ -351,13 +356,15 @@ with tab_cpm:
             sigma = math.sqrt(crit_var)
             v1, v2 = st.columns(2)
             v1.metric("Critical Path Variance", f"{crit_var:.2f}")
-            v2.metric("Std. Deviation (σ)", f"{sigma:.2f} Days")
-            target = st.number_input("Target duration (Days)", min_value=0.0, value=float(math.ceil(project_duration)))
+            v2.metric("Project Standard Deviation", f"{sigma:.2f}")
+            target_duration = st.number_input("Target Completion Days", min_value=0.0, value=20.0)
             if sigma > 0:
-                prob = 0.5 * (1 + math.erf((target - project_duration) / (sigma * math.sqrt(2))))
-                st.info(f"Probability of finishing within {target:g} days: {prob:.1%}")
+                z = (target_duration - project_duration) / sigma
+                probability = 0.5 * (1 + math.erf(z / math.sqrt(2)))  # same as scipy norm.cdf(z)
+                st.success(f"Probability of Completion = {probability * 100:.2f}%")
             else:
-                st.info(f"No uncertainty on the critical path: finishes in {project_duration:g} days.")
+                st.info(f"No uncertainty on the critical path: it finishes in {project_duration:g} days, "
+                        f"{'within' if project_duration <= target_duration else 'after'} the {target_duration:g}-day target.")
 
             st.subheader("📊 CPM Network Diagram")
             fig = draw_network(result_df, {n: parse_preds(p) for n, p in zip(df["Activity"].astype(str).str.strip(), df["Predecessors"])})
