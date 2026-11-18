@@ -20,6 +20,12 @@
   label { display:block; font-size:.9rem; font-weight:600; margin-bottom:4px; }
   input, select { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
   input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .mat th { text-align:left; font-size:.8rem; color:var(--muted); padding:6px 4px; border-bottom:1px solid var(--line); }
+  .mat th:nth-child(n+3), .mat td:nth-child(n+3) { text-align:right; }
+  .mat input { width:80px; padding:6px 8px; text-align:right; }
+  .mat td { font-size:.92rem; }
+  .note { color:var(--muted); font-size:.85rem; margin:10px 0 0; }
+  .scroll { overflow-x:auto; }
   [hidden] { display:none !important; }
   button { width:100%; padding:12px; font-size:1rem; font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
   table { width:100%; border-collapse:collapse; }
@@ -75,6 +81,21 @@
   </div>
 
   <div class="card">
+    <h2>Materials Needed</h2>
+    <div class="field">
+      <label for="waste">Waste / Allowance (%)</label>
+      <input type="number" id="waste" value="5" min="0" step="any">
+    </div>
+    <div class="scroll">
+      <table class="mat">
+        <thead><tr><th>Material</th><th>Unit</th><th>Per sqm</th><th>Total</th></tr></thead>
+        <tbody id="matBody"></tbody>
+      </table>
+    </div>
+    <p class="note">Quantities per sqm are editable planning assumptions (40mm topping, 4,000 PSI mix ≈ 12 bags of 40kg cement per m³). Adjust to your mix design and product data sheets. Totals include the waste allowance.</p>
+  </div>
+
+  <div class="card">
     <h2>Pricing Basis</h2>
     <ul class="spec">
       <li id="specFull">Existing slab + 40mm topping + polishing</li>
@@ -89,6 +110,37 @@
 
 <script>
 const peso = n => "₱ " + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const MATERIALS = [
+  // name, unit, qty per sqm, full-system only, whole units
+  ["Cement (40kg bag)", "bags", 0.48, true, true],
+  ["Sand", "m³", 0.02, true, false],
+  ["Gravel (3/8\")", "m³", 0.04, true, false],
+  ["Bonding agent", "L", 0.25, true, false],
+  ["PP fiber", "kg", 0.036, true, false],
+  ["Curing compound", "L", 0.1, true, false],
+  ["Diamond tooling (set)", "sets", 0.01, false, true],
+  ["Densifier", "L", 0.2, false, false],
+  ["Guard / sealer", "L", 0.1, false, false]
+];
+const matBody = document.getElementById("matBody");
+MATERIALS.forEach((m, i) => {
+  const tr = document.createElement("tr");
+  tr.id = "mat" + i;
+  tr.innerHTML = `<td>${m[0]}</td><td>${m[1]}</td><td><input type="number" id="mq${i}" value="${m[2]}" min="0" step="any"></td><td id="mt${i}"></td>`;
+  matBody.appendChild(tr);
+});
+
+function updateMaterials(area, polishOnly) {
+  const waste = 1 + (parseFloat(document.getElementById("waste").value) || 0) / 100;
+  MATERIALS.forEach((m, i) => {
+    document.getElementById("mat" + i).hidden = polishOnly && m[3];
+    const q = (parseFloat(document.getElementById("mq" + i).value) || 0) * area * waste;
+    document.getElementById("mt" + i).textContent = m[4]
+      ? Math.ceil(q - 1e-9).toLocaleString()
+      : q.toLocaleString("en-PH", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  });
+}
 
 function calculate() {
   const area = parseFloat(document.getElementById("area").value) || 0;
@@ -111,6 +163,7 @@ function calculate() {
   document.getElementById("topping").innerHTML = peso(toppingCost);
   document.getElementById("mobil").innerHTML = peso(mobilization);
   document.getElementById("grand").innerHTML = peso(grandTotal);
+  updateMaterials(area, polishOnly);
 }
 
 document.querySelectorAll("input, select").forEach(i => i.addEventListener("input", calculate));
