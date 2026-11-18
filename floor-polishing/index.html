@@ -18,8 +18,9 @@
   .card h2 { font-size:1rem; margin:0 0 12px; }
   .field { margin-bottom:14px; }
   label { display:block; font-size:.9rem; font-weight:600; margin-bottom:4px; }
-  input { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  input, select { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
   input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  [hidden] { display:none !important; }
   button { width:100%; padding:12px; font-size:1rem; font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
   table { width:100%; border-collapse:collapse; }
   td { padding:10px 4px; border-bottom:1px solid var(--line); }
@@ -40,9 +41,20 @@
       <label for="area">Floor Area (sqm)</label>
       <input type="number" id="area" value="100" min="0" step="any">
     </div>
-    <div>
+    <div class="field">
+      <label for="scope">Scope of Work</label>
+      <select id="scope" onchange="calculate()">
+        <option value="full">Complete System (slab + 40mm topping + polishing)</option>
+        <option value="polish">Polishing Only (existing finished floor)</option>
+      </select>
+    </div>
+    <div id="fullRate">
       <label>Complete System Cost (₱/sqm)</label>
       <input type="number" id="toppingCost" value="1800" min="0" step="any">
+    </div>
+    <div id="polishRate" hidden>
+      <label>Polishing Only Cost (₱/sqm)</label>
+      <input type="number" id="polishCost" value="900" min="0" step="any">
     </div>
     <div class="field" style="margin-top:14px">
       <label>Mobilization / Demobilization (₱)</label>
@@ -56,7 +68,7 @@
     <h2>Estimate</h2>
     <table>
       <tr><td>Floor Area</td><td id="areaOut"></td></tr>
-      <tr><td>Complete System (<span id="rateOut"></span>/sqm)</td><td id="topping"></td></tr>
+      <tr><td><span id="itemName"></span> (<span id="rateOut"></span>/sqm)</td><td id="topping"></td></tr>
       <tr><td>Mobilization / Demobilization</td><td id="mobil"></td></tr>
       <tr class="total"><td>Grand Total</td><td id="grand"></td></tr>
     </table>
@@ -65,9 +77,10 @@
   <div class="card">
     <h2>Pricing Basis</h2>
     <ul class="spec">
-      <li>Existing slab + 40mm topping + polishing</li>
+      <li id="specFull">Existing slab + 40mm topping + polishing</li>
       <li>Minimum concrete strength: 3,500 PSI (preferred 4,000 PSI)</li>
       <li>Complete system rate: ₱1,800/sqm minimum</li>
+      <li>Polishing only: rate is editable (₱900/sqm placeholder, to be confirmed)</li>
       <li>Mobilization: ₱100,000 lump sum</li>
       <li>Example: 100 sqm × ₱1,800 = ₱180,000 + ₱100,000 = ₱280,000</li>
     </ul>
@@ -79,11 +92,16 @@ const peso = n => "₱ " + n.toLocaleString("en-PH", { minimumFractionDigits: 2,
 
 function calculate() {
   const area = parseFloat(document.getElementById("area").value) || 0;
-  const toppingRate = parseFloat(document.getElementById("toppingCost").value) || 0;
+  const polishOnly = document.getElementById("scope").value === "polish";
+  document.getElementById("fullRate").hidden = polishOnly;
+  document.getElementById("polishRate").hidden = !polishOnly;
+  document.getElementById("itemName").textContent = polishOnly ? "Polishing Only" : "Complete System";
+  document.getElementById("specFull").hidden = polishOnly;
+  const toppingRate = parseFloat(document.getElementById(polishOnly ? "polishCost" : "toppingCost").value) || 0;
   const mobilization = parseFloat(document.getElementById("mobilization").value) || 0;
 
   const err = document.getElementById("err");
-  err.textContent = toppingRate < 1800 ? "Note: rate is below the ₱1,800/sqm minimum." : "";
+  err.textContent = (!polishOnly && toppingRate < 1800) ? "Note: rate is below the ₱1,800/sqm minimum." : "";
 
   const toppingCost = area * toppingRate;
   const grandTotal = toppingCost + mobilization;
@@ -95,7 +113,7 @@ function calculate() {
   document.getElementById("grand").innerHTML = peso(grandTotal);
 }
 
-document.querySelectorAll("input").forEach(i => i.addEventListener("input", calculate));
+document.querySelectorAll("input, select").forEach(i => i.addEventListener("input", calculate));
 calculate();
 </script>
 </body>
