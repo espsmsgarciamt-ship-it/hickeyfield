@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floor Polishing Estimator</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e2e5ea; --accent:#0b5cad; --accent-ink:#fff; --total:#e8f1fb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b2029; --ink:#eceff4; --muted:#9aa4b2; --line:#2b3240; --accent:#4c9aea; --accent-ink:#0b0f16; --total:#1d2b3d; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:680px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  p.sub { margin:0 0 20px; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .card h2 { font-size:1rem; margin:0 0 12px; }
+  .field { margin-bottom:14px; }
+  label { display:block; font-size:.9rem; font-weight:600; margin-bottom:4px; }
+  input { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  button { width:100%; padding:12px; font-size:1rem; font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:10px 4px; border-bottom:1px solid var(--line); }
+  td:last-child { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr.total td { font-weight:700; font-size:1.1rem; background:var(--total); border-bottom:0; }
+  ul.spec { margin:0; padding-left:20px; color:var(--muted); font-size:.92rem; }
+  .err { color:#c0392b; font-size:.9rem; min-height:1.2em; margin:8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Floor Polishing Estimator</h1>
+  <p class="sub">Existing slab + 40mm topping + polishing</p>
+
+  <div class="card">
+    <h2>Inputs</h2>
+    <div class="field">
+      <label for="area">Floor Area (sqm)</label>
+      <input type="number" id="area" value="100" min="0" step="any">
+    </div>
+    <div>
+      <label>Complete System Cost (₱/sqm)</label>
+      <input type="number" id="toppingCost" value="1800" min="0" step="any">
+    </div>
+    <div class="field" style="margin-top:14px">
+      <label>Mobilization / Demobilization (₱)</label>
+      <input type="number" id="mobilization" value="100000" min="0" step="any">
+    </div>
+    <button type="button" onclick="calculate()">Calculate</button>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div class="card">
+    <h2>Estimate</h2>
+    <table>
+      <tr><td>Floor Area</td><td id="areaOut"></td></tr>
+      <tr><td>Complete System (<span id="rateOut"></span>/sqm)</td><td id="topping"></td></tr>
+      <tr><td>Mobilization / Demobilization</td><td id="mobil"></td></tr>
+      <tr class="total"><td>Grand Total</td><td id="grand"></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Pricing Basis</h2>
+    <ul class="spec">
+      <li>Existing slab + 40mm topping + polishing</li>
+      <li>Minimum concrete strength: 3,500 PSI (preferred 4,000 PSI)</li>
+      <li>Complete system rate: ₱1,800/sqm minimum</li>
+      <li>Mobilization: ₱100,000 lump sum</li>
+      <li>Example: 100 sqm × ₱1,800 = ₱180,000 + ₱100,000 = ₱280,000</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+const peso = n => "₱ " + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function calculate() {
+  const area = parseFloat(document.getElementById("area").value) || 0;
+  const toppingRate = parseFloat(document.getElementById("toppingCost").value) || 0;
+  const mobilization = parseFloat(document.getElementById("mobilization").value) || 0;
+
+  const err = document.getElementById("err");
+  err.textContent = toppingRate < 1800 ? "Note: rate is below the ₱1,800/sqm minimum." : "";
+
+  const toppingCost = area * toppingRate;
+  const grandTotal = toppingCost + mobilization;
+
+  document.getElementById("areaOut").innerHTML = area.toLocaleString() + " sqm";
+  document.getElementById("rateOut").innerHTML = peso(toppingRate);
+  document.getElementById("topping").innerHTML = peso(toppingCost);
+  document.getElementById("mobil").innerHTML = peso(mobilization);
+  document.getElementById("grand").innerHTML = peso(grandTotal);
+}
+
+document.querySelectorAll("input").forEach(i => i.addEventListener("input", calculate));
+calculate();
+</script>
+</body>
+</html>
