@@ -22,9 +22,15 @@
   input:focus { outline:2px solid var(--accent); outline-offset:1px; }
   .mat th { text-align:left; font-size:.8rem; color:var(--muted); padding:6px 4px; border-bottom:1px solid var(--line); }
   .mat th:nth-child(n+3), .mat td:nth-child(n+3) { text-align:right; }
+  .mat th:nth-child(2), .mat td:nth-child(2) { text-align:left; }
   .mat input { width:80px; padding:6px 8px; text-align:right; }
   .mat td { font-size:.92rem; }
   .note { color:var(--muted); font-size:.85rem; margin:10px 0 0; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin-bottom:14px; }
+  .mat tr.grp td { font-weight:700; background:var(--total); font-size:.85rem; }
+  .mat .spec { display:block; color:var(--muted); font-size:.78rem; }
+  .mat tfoot td { font-weight:700; }
+  .mat input.price { width:90px; }
   .scroll { overflow-x:auto; }
   [hidden] { display:none !important; }
   button { width:100%; padding:12px; font-size:1rem; font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
@@ -81,18 +87,27 @@
   </div>
 
   <div class="card">
-    <h2>Materials Needed</h2>
+    <h2>Materials Needed (Detailed)</h2>
+    <div class="grid" id="mixInputs">
+      <div><label for="thick">Topping thickness (mm)</label><input type="number" id="thick" value="40" min="0" step="any"></div>
+      <div><label for="mixCement">Cement (40kg bags / m³)</label><input type="number" id="mixCement" value="12" min="0" step="any"></div>
+      <div><label for="mixSand">Sand (m³ / m³)</label><input type="number" id="mixSand" value="0.5" min="0" step="any"></div>
+      <div><label for="mixGravel">Gravel (m³ / m³)</label><input type="number" id="mixGravel" value="1" min="0" step="any"></div>
+    </div>
     <div class="field">
       <label for="waste">Waste / Allowance (%)</label>
       <input type="number" id="waste" value="5" min="0" step="any">
     </div>
+    <p class="note" id="volNote" style="margin:0 0 10px"></p>
     <div class="scroll">
       <table class="mat">
-        <thead><tr><th>Material</th><th>Unit</th><th>Per sqm</th><th>Total</th></tr></thead>
+        <thead><tr><th>Material</th><th>Unit</th><th>Per</th><th>Total</th><th>₱/unit</th><th>Cost</th></tr></thead>
         <tbody id="matBody"></tbody>
+        <tfoot><tr><td colspan="5">Total Materials Cost</td><td id="matTotal"></td></tr>
+        <tr><td colspan="5">Materials as % of Grand Total</td><td id="matPct"></td></tr></tfoot>
       </table>
     </div>
-    <p class="note">Quantities per sqm are editable planning assumptions (40mm topping, 4,000 PSI mix ≈ 12 bags of 40kg cement per m³). Adjust to your mix design and product data sheets. Totals include the waste allowance.</p>
+    <p class="note">"Per" is the quantity per sqm of floor, or per m³ of topping concrete where marked. All quantities are editable planning assumptions, not product data. Enter your supplier unit prices to get material cost; blank prices count as zero. Totals include the waste allowance.</p>
   </div>
 
   <div class="card">
@@ -111,35 +126,74 @@
 <script>
 const peso = n => "₱ " + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// group, name, spec, unit, qty, basis ("sqm" or "m3"), full-system only, whole units
 const MATERIALS = [
-  // name, unit, qty per sqm, full-system only, whole units
-  ["Cement (40kg bag)", "bags", 0.48, true, true],
-  ["Sand", "m³", 0.02, true, false],
-  ["Gravel (3/8\")", "m³", 0.04, true, false],
-  ["Bonding agent", "L", 0.25, true, false],
-  ["PP fiber", "kg", 0.036, true, false],
-  ["Curing compound", "L", 0.1, true, false],
-  ["Diamond tooling (set)", "sets", 0.01, false, true],
-  ["Densifier", "L", 0.2, false, false],
-  ["Guard / sealer", "L", 0.1, false, false]
+  ["1. Surface preparation", "Diamond prep tooling (cup wheels)", "Grind / open existing slab", "sets", 0.005, "sqm", false, true],
+  ["1. Surface preparation", "Bonding agent", "Epoxy or acrylic bond coat", "L", 0.25, "sqm", true, false],
+  ["2. Topping (40mm)", "Cement", "40kg bag, mix-design based", "bags", "mixCement", "m3", true, true],
+  ["2. Topping (40mm)", "Sand", "Washed fine aggregate", "m³", "mixSand", "m3", true, false],
+  ["2. Topping (40mm)", "Gravel 3/8\"", "Coarse aggregate", "m³", "mixGravel", "m3", true, false],
+  ["2. Topping (40mm)", "Water reducer / plasticizer", "Low w/c for 4,000 PSI", "L", 1.5, "m3", true, false],
+  ["2. Topping (40mm)", "PP fiber", "Shrinkage crack control", "kg", 0.9, "m3", true, false],
+  ["3. Curing", "Curing compound", "Membrane-forming, spray", "L", 0.1, "sqm", true, false],
+  ["4. Grinding & polishing", "Metal-bond diamond segments", "Coarse grinding passes", "sets", 0.004, "sqm", false, true],
+  ["4. Grinding & polishing", "Resin-bond diamond pads", "Fine polish passes", "sets", 0.006, "sqm", false, true],
+  ["4. Grinding & polishing", "Joint / crack filler", "Semi-rigid epoxy", "L", 0.05, "sqm", false, false],
+  ["5. Chemical treatment", "Densifier", "Lithium / silicate hardener", "L", 0.2, "sqm", false, false],
+  ["5. Chemical treatment", "Guard / sealer", "Stain-guard finish coat", "L", 0.1, "sqm", false, false]
 ];
+const MIX_IDS = ["mixCement", "mixSand", "mixGravel"];
 const matBody = document.getElementById("matBody");
+let lastGroup = null;
 MATERIALS.forEach((m, i) => {
+  if (m[0] !== lastGroup) {
+    lastGroup = m[0];
+    const g = document.createElement("tr");
+    g.className = "grp"; g.dataset.group = m[0];
+    g.innerHTML = `<td colspan="6">${m[0]}</td>`;
+    matBody.appendChild(g);
+  }
   const tr = document.createElement("tr");
-  tr.id = "mat" + i;
-  tr.innerHTML = `<td>${m[0]}</td><td>${m[1]}</td><td><input type="number" id="mq${i}" value="${m[2]}" min="0" step="any"></td><td id="mt${i}"></td>`;
+  tr.id = "mat" + i; tr.dataset.group = m[0];
+  const per = typeof m[4] === "string"
+    ? `<span id="mq${i}" data-mix="${m[4]}"></span>`
+    : `<input type="number" id="mq${i}" value="${m[4]}" min="0" step="any">`;
+  tr.innerHTML = `<td>${m[1]}<span class="spec">${m[2]}</span></td><td>${m[3]}</td>` +
+    `<td>${per}<span class="spec">/${m[5] === "m3" ? "m³" : "sqm"}</span></td><td id="mt${i}"></td>` +
+    `<td><input type="number" class="price" id="mp${i}" placeholder="0" min="0" step="any"></td><td id="mc${i}"></td>`;
   matBody.appendChild(tr);
 });
 
-function updateMaterials(area, polishOnly) {
-  const waste = 1 + (parseFloat(document.getElementById("waste").value) || 0) / 100;
+const num = id => parseFloat(document.getElementById(id).value) || 0;
+
+function updateMaterials(area, polishOnly, grandTotal) {
+  const waste = 1 + num("waste") / 100;
+  const vol = area * num("thick") / 1000;
+  document.getElementById("mixInputs").hidden = polishOnly;
+  document.getElementById("volNote").textContent = polishOnly ? "" :
+    `Topping concrete: ${area.toLocaleString()} sqm × ${num("thick")} mm = ${vol.toLocaleString("en-PH", {maximumFractionDigits: 2})} m³ (net)`;
+  let total = 0;
+  const visibleGroups = new Set();
   MATERIALS.forEach((m, i) => {
-    document.getElementById("mat" + i).hidden = polishOnly && m[3];
-    const q = (parseFloat(document.getElementById("mq" + i).value) || 0) * area * waste;
-    document.getElementById("mt" + i).textContent = m[4]
-      ? Math.ceil(q - 1e-9).toLocaleString()
-      : q.toLocaleString("en-PH", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const hide = polishOnly && m[6];
+    document.getElementById("mat" + i).hidden = hide;
+    if (hide) return;
+    visibleGroups.add(m[0]);
+    const el = document.getElementById("mq" + i);
+    const per = el.dataset.mix ? num(el.dataset.mix) : num("mq" + i);
+    if (el.dataset.mix) el.textContent = per.toLocaleString();
+    const q = per * (m[5] === "m3" ? vol : area) * waste;
+    const qty = m[7] ? Math.ceil(q - 1e-9) : q;
+    document.getElementById("mt" + i).textContent = m[7]
+      ? qty.toLocaleString()
+      : qty.toLocaleString("en-PH", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const cost = qty * num("mp" + i);
+    total += cost;
+    document.getElementById("mc" + i).textContent = cost ? peso(cost) : "—";
   });
+  matBody.querySelectorAll("tr.grp").forEach(g => { g.hidden = !visibleGroups.has(g.dataset.group); });
+  document.getElementById("matTotal").textContent = peso(total);
+  document.getElementById("matPct").textContent = grandTotal ? (total / grandTotal * 100).toFixed(1) + " %" : "—";
 }
 
 function calculate() {
@@ -163,7 +217,7 @@ function calculate() {
   document.getElementById("topping").innerHTML = peso(toppingCost);
   document.getElementById("mobil").innerHTML = peso(mobilization);
   document.getElementById("grand").innerHTML = peso(grandTotal);
-  updateMaterials(area, polishOnly);
+  updateMaterials(area, polishOnly, grandTotal);
 }
 
 document.querySelectorAll("input, select").forEach(i => i.addEventListener("input", calculate));
