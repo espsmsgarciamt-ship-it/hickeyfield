@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#0f766e">
+<title>Sari-Sari Store</title>
+<style>
+:root{--bg:#f4f6f5;--card:#fff;--ink:#14201d;--mut:#64748b;--pri:#0f766e;--pri2:#ccfbf1;--bad:#b91c1c;--ok:#15803d;--line:#e2e8f0}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1514;--card:#17211f;--ink:#e6efed;--mut:#94a3b8;--pri:#2dd4bf;--pri2:#134e4a;--bad:#f87171;--ok:#4ade80;--line:#26343a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif;padding-bottom:72px}
+header{background:var(--pri);color:#fff;padding:12px 16px;font-weight:700;font-size:18px;position:sticky;top:0;z-index:5}
+@media(prefers-color-scheme:dark){header{color:#062a26}}
+main{padding:12px 16px;max-width:720px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);z-index:6}
+nav button{flex:1;padding:14px 0;border:0;background:none;color:var(--mut);font-size:13px;font-weight:600}
+nav button.on{color:var(--pri);border-top:3px solid var(--pri)}
+button.b{background:var(--pri);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-size:16px;font-weight:600}
+@media(prefers-color-scheme:dark){button.b{color:#062a26}}
+button.g{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:15px}
+button.d{color:var(--bad)}
+input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.row>.s{flex:0 0 auto}
+.item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}.mut{color:var(--mut);font-size:13px}.big{font-size:30px;font-weight:800}
+.up{color:var(--ok)}.dn{color:var(--bad)}
+#reader{width:100%;border-radius:10px;overflow:hidden}
+.qty button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:18px}
+.hide{display:none}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);width:min(92vw,420px)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}td:first-child,th:first-child{text-align:left}
+</style>
+</head>
+<body>
+<header id="title">Sari-Sari Store</header>
+<main>
+<!-- SELL -->
+<section id="v-sell">
+  <div class="card">
+    <div id="reader" class="hide"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="b" id="scanBtn">📷 Scan barcode</button>
+      <input id="manual" inputmode="numeric" placeholder="or type barcode" class="s" style="flex:1">
+      <button class="g s" id="addManual">Add</button>
+    </div>
+    <div class="mut" id="scanMsg" style="margin-top:6px"></div>
+  </div>
+  <div class="card"><div id="cart"></div>
+    <div class="item"><span>Total</span><span class="big" id="total">₱0.00</span></div>
+    <label>Payment received (₱)</label><input id="pay" type="number" inputmode="decimal" placeholder="0.00">
+    <div class="row" style="margin-top:8px" id="quick"></div>
+    <div class="item"><span>Change</span><span class="big" id="change">₱0.00</span></div>
+    <div class="row" style="margin-top:8px"><button class="g d" id="clear">Clear</button><button class="b" id="done">✔ Complete sale</button></div>
+  </div>
+</section>
+<!-- SALES -->
+<section id="v-sales" class="hide">
+  <div class="card"><div class="row"><div><label>Date</label><input type="date" id="salesDate"></div></div>
+    <div class="item"><span>Sales</span><b id="sCount">0</b></div>
+    <div class="item"><span>Revenue</span><b id="sRev">₱0</b></div>
+    <div class="item"><span>Profit</span><b id="sProfit">₱0</b></div></div>
+  <div class="card"><b>Items sold</b><div id="sItems"></div></div>
+  <div class="card"><b>Transactions</b><div id="sTx"></div></div>
+</section>
+<!-- PRODUCTS -->
+<section id="v-prod" class="hide">
+  <div class="row" style="margin-bottom:12px"><button class="b" id="newProd">+ New product</button></div>
+  <div class="card" id="prodList"></div>
+</section>
+<!-- MONTHLY -->
+<section id="v-month" class="hide">
+  <div class="card"><label>Month</label><input type="month" id="mSel">
+    <button class="b" id="saveInv" style="margin-top:10px;width:100%">💾 Save monthly inventory</button>
+    <div class="mut" id="mSaved" style="margin-top:6px"></div></div>
+  <div class="card"><b>Month sales vs previous month</b><div id="mGrowth"></div></div>
+  <div class="card"><b>Per product (% change in units sold)</b><div style="overflow:auto"><table id="mTable"></table></div></div>
+  <div class="card"><b>Saved inventories</b><div id="mHist"></div></div>
+  <div class="card"><div class="row"><button class="g" id="exp">⬇ Export backup</button><button class="g" id="imp">⬆ Import</button></div><input type="file" id="impF" class="hide" accept=".json"></div>
+</section>
+</main>
+
+<dialog id="dlg"><form method="dialog" id="pf">
+  <b id="dTitle">Product</b>
+  <label>Barcode</label><div class="row"><input id="pCode" inputmode="numeric"><button type="button" class="g s" id="pScan">📷</button></div>
+  <div id="pReader" class="hide"></div>
+  <label>Name</label><input id="pName">
+  <div class="row"><div><label>Cost (₱)</label><input id="pCost" type="number" inputmode="decimal" step="0.01"></div>
+  <div><label>Markup %</label><input id="pMark" type="number" inputmode="decimal" step="0.1"></div></div>
+  <label>Selling price (₱)</label><input id="pPrice" type="number" inputmode="decimal" step="0.01">
+  <label>Stock</label><input id="pStock" type="number" inputmode="numeric">
+  <div class="row" style="margin-top:12px"><button type="button" class="g d" id="pDel">Delete</button><button type="button" class="g" id="pCancel">Cancel</button><button type="button" class="b" id="pSave">Save</button></div>
+</form></dialog>
+
+<nav id="nav"><button data-v="sell" class="on">🛒<br>Sell</button><button data-v="sales">🧾<br>Sales</button><button data-v="prod">📦<br>Products</button><button data-v="month">📊<br>Monthly</button></nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const peso=n=>'₱'+(+n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const KEY='sarisari.v1';
+let db={products:{},sales:[],inventories:{}};
+try{const s=localStorage.getItem(KEY);if(s)db=Object.assign(db,JSON.parse(s))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alert('Could not save data')}};
+let cart={};      // code -> qty
+const today=()=>new Date().toLocaleDateString('en-CA');
+const ym=d=>d.slice(0,7);
+
+/* nav */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+function show(v){
+  ['sell','sales','prod','month'].forEach(x=>$('v-'+x).classList.toggle('hide',x!==v));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  if(v!=='sell')stopScan('reader');
+  ({sell:renderCart,sales:renderSales,prod:renderProducts,month:renderMonth})[v]();
+}
+
+/* scanner */
+let scanner=null,scanTarget=null;
+async function startScan(el,onCode){
+  await stopScan(el);
+  $(el).classList.remove('hide');
+  if(!window.Html5Qrcode){alert('Scanner library not loaded (need internet once). Type the barcode instead.');return}
+  scanner=new Html5Qrcode(el);scanTarget=el;let last=0;
+  try{
+    await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:140}},code=>{
+      if(Date.now()-last<1500)return;last=Date.now();navigator.vibrate&&navigator.vibrate(60);onCode(code)});
+  }catch(e){$(el).classList.add('hide');scanner=null;alert('Camera unavailable: '+e+'\nCamera needs HTTPS and permission.')}
+}
+async function stopScan(el){
+  if(scanner){try{await scanner.stop();scanner.clear()}catch(e){}scanner=null}
+  if($(el))$(el).classList.add('hide');
+}
+$('scanBtn').onclick=()=>scanner?stopScan('reader'):startScan('reader',addCode);
+$('addManual').onclick=()=>{const c=$('manual').value.trim();if(c){addCode(c);$('manual').value=''}};
+$('manual').onkeydown=e=>{if(e.key==='Enter')$('addManual').click()};
+
+function addCode(code){
+  const p=db.products[code];
+  if(!p){$('scanMsg').textContent='Unknown barcode '+code;
+    if(confirm('Barcode '+code+' is not registered. Add it as a new product?'))openProduct(code);return}
+  cart[code]=(cart[code]||0)+1;
+  $('scanMsg').textContent='Added: '+p.name;renderCart();
+}
+
+/* cart */
+const total=()=>Object.entries(cart).reduce((s,[c,q])=>s+(db.products[c]?.price||0)*q,0);
+function renderCart(){
+  const ks=Object.keys(cart);
+  $('cart').innerHTML=ks.length?ks.map(c=>{const p=db.products[c];return `<div class="item"><div><b>${esc(p.name)}</b><div class="mut">${peso(p.price)} each · stock ${p.stock}</div></div>
+   <div class="qty row s"><button data-c="${c}" data-d="-1">−</button><b style="min-width:26px;text-align:center">${cart[c]}</b><button data-c="${c}" data-d="1">+</button></div></div>`}).join(''):'<div class="mut">Scan an item to begin.</div>';
+  $('cart').querySelectorAll('button').forEach(b=>b.onclick=()=>{const c=b.dataset.c;cart[c]+=+b.dataset.d;if(cart[c]<=0)delete cart[c];renderCart()});
+  const t=total();$('total').textContent=peso(t);
+  const q=[...new Set([t,Math.ceil(t/50)*50,Math.ceil(t/100)*100,500,1000].filter(x=>x>=t&&x>0))].slice(0,4);
+  $('quick').innerHTML=q.map(x=>`<button class="g s" data-q="${x}">${peso(x).replace('.00','')}</button>`).join('');
+  $('quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('pay').value=b.dataset.q;calc()});
+  calc();
+}
+function calc(){const ch=(+$('pay').value||0)-total();$('change').textContent=peso(Math.max(0,ch));
+  $('change').className='big '+(ch<0&&$('pay').value?'dn':'')}
+$('pay').oninput=calc;
+$('clear').onclick=()=>{cart={};$('pay').value='';renderCart()};
+$('done').onclick=()=>{
+  const ks=Object.keys(cart);if(!ks.length)return alert('Cart is empty');
+  const t=total(),paid=+$('pay').value||0;
+  if(paid<t)return alert('Payment is less than total');
+  const items=ks.map(c=>{const p=db.products[c];p.stock=Math.max(0,p.stock-cart[c]);
+    return{code:c,name:p.name,qty:cart[c],price:p.price,cost:p.cost||0}});
+  db.sales.push({id:Date.now(),date:today(),time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),items,total:t,paid,change:paid-t});
+  save();alert('Sale complete!\nTotal '+peso(t)+'\nChange '+peso(paid-t));
+  cart={};$('pay').value='';renderCart();
+};
+
+/* sales */
+$('salesDate').value=today();$('salesDate').onchange=renderSales;
+function renderSales(){
+  const d=$('salesDate').value,ss=db.sales.filter(s=>s.date===d);
+  const rev=ss.reduce((a,s)=>a+s.total,0),prof=ss.reduce((a,s)=>a+s.items.reduce((x,i)=>x+(i.price-i.cost)*i.qty,0),0);
+  $('sCount').textContent=ss.length;$('sRev').textContent=peso(rev);$('sProfit').textContent=peso(prof);
+  const agg={};ss.forEach(s=>s.items.forEach(i=>{(agg[i.code]??={name:i.name,qty:0,amt:0});agg[i.code].qty+=i.qty;agg[i.code].amt+=i.qty*i.price}));
+  $('sItems').innerHTML=Object.values(agg).sort((a,b)=>b.qty-a.qty).map(i=>`<div class="item"><span>${esc(i.name)} × ${i.qty}</span><b>${peso(i.amt)}</b></div>`).join('')||'<div class="mut">No sales.</div>';
+  $('sTx').innerHTML=ss.slice().reverse().map(s=>`<div class="item"><div>${s.time}<div class="mut">${s.items.map(i=>i.qty+'× '+esc(i.name)).join(', ')}</div></div><b>${peso(s.total)}</b></div>`).join('')||'<div class="mut">None.</div>';
+}
+
+/* products */
+function renderProducts(){
+  const ps=Object.entries(db.products).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  $('prodList').innerHTML=ps.map(([c,p])=>`<div class="item" data-c="${c}"><div><b>${esc(p.name)}</b><div class="mut">${c} · cost ${peso(p.cost||0)} · markup ${markup(p)}%</div></div>
+   <div style="text-align:right"><b>${peso(p.price)}</b><div class="${p.stock<=5?'dn':'mut'}">stock ${p.stock}</div></div></div>`).join('')||'<div class="mut">No products yet. Add one.</div>';
+  $('prodList').querySelectorAll('.item').forEach(e=>e.onclick=()=>openProduct(e.dataset.c));
+}
+const markup=p=>p.cost>0?(((p.price-p.cost)/p.cost)*100).toFixed(1):'0';
+let editing=null;
+function openProduct(code){
+  show('prod');editing=db.products[code]?code:null;const p=db.products[code]||{};
+  $('dTitle').textContent=editing?'Edit product':'New product';
+  $('pCode').value=code||'';$('pName').value=p.name||'';$('pCost').value=p.cost??'';$('pPrice').value=p.price??'';
+  $('pMark').value=p.cost?markup(p):'';$('pStock').value=p.stock??'';$('pDel').classList.toggle('hide',!editing);
+  $('dlg').showModal();
+}
+$('newProd').onclick=()=>openProduct('');
+$('pScan').onclick=()=>startScan('pReader',c=>{$('pCode').value=c;stopScan('pReader')});
+$('pCancel').onclick=()=>{stopScan('pReader');$('dlg').close()};
+// markup <-> price link
+const syncPrice=()=>{const c=+$('pCost').value,m=+$('pMark').value;if(c>0&&$('pMark').value!=='')$('pPrice').value=(c*(1+m/100)).toFixed(2)};
+$('pCost').oninput=syncPrice;$('pMark').oninput=syncPrice;
+$('pPrice').oninput=()=>{const c=+$('pCost').value,p=+$('pPrice').value;if(c>0)$('pMark').value=(((p-c)/c)*100).toFixed(1)};
+$('pSave').onclick=()=>{
+  const code=$('pCode').value.trim(),name=$('pName').value.trim(),price=+$('pPrice').value;
+  if(!code||!name||!(price>0))return alert('Barcode, name and selling price are required');
+  if(editing&&editing!==code){db.products[code]=db.products[editing];delete db.products[editing]}
+  db.products[code]={name,cost:+$('pCost').value||0,price,stock:parseInt($('pStock').value)||0};
+  save();stopScan('pReader');$('dlg').close();renderProducts();
+};
+$('pDel').onclick=()=>{if(confirm('Delete this product?')){delete db.products[editing];save();$('dlg').close();renderProducts()}};
+
+/* monthly */
+$('mSel').value=today().slice(0,7);$('mSel').onchange=renderMonth;
+const prevYM=m=>{let[y,mo]=m.split('-').map(Number);mo--;if(!mo){mo=12;y--}return y+'-'+String(mo).padStart(2,'0')};
+const pct=(a,b)=>b>0?((a-b)/b*100):(a>0?null:0);
+const fmtPct=v=>v===null?'new':`<span class="${v>=0?'up':'dn'}">${v>=0?'▲':'▼'} ${Math.abs(v).toFixed(1)}%</span>`;
+function monthAgg(m){const r={rev:0,profit:0,items:{}};
+  db.sales.filter(s=>ym(s.date)===m).forEach(s=>s.items.forEach(i=>{r.rev+=i.qty*i.price;r.profit+=i.qty*(i.price-i.cost);
+    (r.items[i.code]??={name:i.name,qty:0,amt:0});r.items[i.code].qty+=i.qty;r.items[i.code].amt+=i.qty*i.price}));return r}
+function renderMonth(){
+  const m=$('mSel').value,cur=monthAgg(m),prv=monthAgg(prevYM(m));
+  $('mGrowth').innerHTML=`<div class="item"><span>Revenue</span><span>${peso(cur.rev)} ${fmtPct(pct(cur.rev,prv.rev))}</span></div>
+   <div class="item"><span>Profit</span><span>${peso(cur.profit)} ${fmtPct(pct(cur.profit,prv.profit))}</span></div>`;
+  const codes=new Set([...Object.keys(cur.items),...Object.keys(prv.items)]);
+  $('mTable').innerHTML='<tr><th>Item</th><th>Prev</th><th>Now</th><th>Change</th></tr>'+[...codes].map(c=>{
+    const a=cur.items[c]?.qty||0,b=prv.items[c]?.qty||0,n=(cur.items[c]||prv.items[c]).name;
+    return `<tr><td>${esc(n)}</td><td>${b}</td><td>${a}</td><td>${fmtPct(pct(a,b))}</td></tr>`}).join('');
+  const inv=db.inventories[m];$('mSaved').textContent=inv?'Saved '+new Date(inv.savedAt).toLocaleString()+' · '+inv.rows.length+' products':'Not saved yet for this month.';
+  $('mHist').innerHTML=Object.keys(db.inventories).sort().reverse().map(k=>{const v=db.inventories[k];
+    const val=v.rows.reduce((s,r)=>s+r.stock*r.cost,0);
+    return `<div class="item" data-k="${k}"><div><b>${k}</b><div class="mut">${v.rows.reduce((s,r)=>s+r.stock,0)} units · stock value ${peso(val)}</div></div><button class="g">View</button></div>`}).join('')||'<div class="mut">None.</div>';
+  $('mHist').querySelectorAll('.item').forEach(e=>e.onclick=()=>{const v=db.inventories[e.dataset.k];
+    alert(e.dataset.k+' inventory\n\n'+v.rows.map(r=>`${r.name}: ${r.stock} (cost ${r.cost}, price ${r.price})`).join('\n'))});
+}
+$('saveInv').onclick=()=>{
+  const m=$('mSel').value;if(db.inventories[m]&&!confirm('Overwrite saved inventory for '+m+'?'))return;
+  db.inventories[m]={savedAt:Date.now(),rows:Object.entries(db.products).map(([code,p])=>({code,name:p.name,stock:p.stock,cost:p.cost||0,price:p.price}))};
+  save();renderMonth();
+};
+$('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db)],{type:'application/json'}));a.download='sarisari-backup-'+today()+'.json';a.click()};
+$('imp').onclick=()=>$('impF').click();
+$('impF').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.products)throw 0;if(confirm('Replace all current data?')){db=Object.assign({products:{},sales:[],inventories:{}},d);save();renderMonth()}}catch(x){alert('Invalid backup file')}};
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+renderCart();
+</script>
+</body>
+</html>
